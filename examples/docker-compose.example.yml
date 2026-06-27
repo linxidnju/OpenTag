@@ -1,0 +1,12 @@
+services:
+  opentag:
+    image: node:22-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - opentag-state:/app/.opentag
+    env_file:
+      - ./examples/env.example
+    command: sh -lc "npm install && npm run start"
+volumes:
+  opentag-state:

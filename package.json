@@ -1,0 +1,30 @@
+{
+  "name": "opentag",
+  "version": "0.2.0",
+  "description": "Open-source channel-native agent gateway inspired by Claude Tag. Slack-first MVP with pluggable runtime adapters.",
+  "type": "module",
+  "private": false,
+  "license": "Apache-2.0",
+  "bin": {
+    "opentag": "./bin/opentag.js"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "start": "node ./bin/opentag.js start --config ./examples/opentag.config.example.json",
+    "start:console": "node ./bin/opentag.js start --gateway console --config ./examples/opentag.config.example.json",
+    "doctor": "node ./bin/opentag.js doctor --config ./examples/opentag.config.example.json",
+    "run:mock": "node ./bin/opentag.js run --runtime mock --config ./examples/opentag.config.example.json --prompt \"Summarize OpenTag\"",
+    "test": "node --test test/*.test.js",
+    "check": "node ./scripts/check-repo.js",
+    "start:admin": "node ./bin/opentag.js admin --config ./examples/opentag.config.example.json",
+    "mcp": "node ./bin/opentag.js mcp --config ./examples/opentag.config.example.json",
+    "smoke": "node ./bin/opentag.js run --runtime mock --config ./examples/opentag.config.example.json --prompt \"hello OpenTag\""
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.4.0",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {}
+}

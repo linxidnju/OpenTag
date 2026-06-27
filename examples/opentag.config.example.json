@@ -1,0 +1,231 @@
+{
+  "app": {
+    "name": "OpenTag",
+    "dataDir": "./.opentag/data",
+    "logLevel": "info"
+  },
+  "gateway": "slack",
+  "slack": {
+    "mode": "socket",
+    "botTokenEnv": "SLACK_BOT_TOKEN",
+    "appTokenEnv": "SLACK_APP_TOKEN",
+    "signingSecretEnv": "SLACK_SIGNING_SECRET",
+    "commandName": "/opentag",
+    "processThreadReplies": true,
+    "processDirectMessages": true,
+    "hydrateThreadContext": true,
+    "maxHydratedMessages": 20,
+    "enableEventDedupe": true,
+    "streamUpdateMs": 1500,
+    "maxMessageChars": 3500,
+    "uploadArtifacts": false,
+    "slashCommand": "/opentag",
+    "dedupeEvents": true
+  },
+  "admin": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 8787,
+    "tokenEnv": "OPENTAG_ADMIN_TOKEN",
+    "requireToken": true
+  },
+  "mcp": {
+    "enabled": true,
+    "name": "opentag-mcp",
+    "allowSlackPost": false,
+    "requireApprovalForSlackPost": true,
+    "maxToolResultChars": 12000,
+    "protocolVersion": "2025-03-26"
+  },
+  "sessions": {
+    "maxContextMessages": 24,
+    "maxPromptChars": 60000,
+    "idleTtlHours": 72
+  },
+  "sandbox": {
+    "rootDir": "./.opentag/sandboxes",
+    "workspaceRoot": null,
+    "mode": "ephemeral",
+    "cleanupOnComplete": false,
+    "retentionHours": 24,
+    "collectArtifacts": true,
+    "artifactMaxBytes": 5000000,
+    "artifactInclude": [
+      "*.md",
+      "*.txt",
+      "*.json",
+      "*.patch",
+      "*.diff",
+      "*.log"
+    ]
+  },
+  "workspaces": [
+    {
+      "workspaceId": "*",
+      "channels": [
+        {
+          "channelId": "*",
+          "name": "default",
+          "defaultRuntime": "mock",
+          "allowedRuntimes": [
+            "mock",
+            "claude-code-readonly",
+            "claude-code-write",
+            "codex-readonly",
+            "codex-workspace-write",
+            "opencode",
+            "docker-node-readonly",
+            "hermes-http",
+            "openclaw-http"
+          ],
+          "allowedUsers": [],
+          "blockedUsers": [],
+          "approvers": [],
+          "allowedRoots": [],
+          "workspaceRoot": null,
+          "instructions": "Prefer concise, auditable Slack-thread updates. Ask before irreversible actions.",
+          "memory": {
+            "channelNotesPath": "./memory/default-channel.md"
+          },
+          "policy": {
+            "requireApprovalForWriteAccess": true,
+            "allowSelfApproval": true,
+            "requireApprovalPatterns": [
+              "deploy",
+              "production",
+              "delete",
+              "drop table",
+              "push"
+            ],
+            "denyPatterns": []
+          },
+          "toolPolicy": {
+            "allowTools": [
+              "Read",
+              "Glob",
+              "Grep",
+              "LS",
+              "Bash",
+              "Edit",
+              "Write",
+              "MultiEdit",
+              "codex",
+              "opencode",
+              "generic-cli"
+            ],
+            "denyTools": [],
+            "requireApprovalTools": [
+              "Bash",
+              "Edit",
+              "Write",
+              "MultiEdit"
+            ],
+            "requireApprovalPatterns": [
+              "deploy",
+              "production",
+              "delete",
+              "drop table",
+              "push"
+            ],
+            "denyPatterns": [
+              "rm\\s+-rf\\s+/"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "runtimes": {
+    "default": "mock",
+    "adapters": {
+      "mock": {
+        "type": "mock",
+        "delayMs": 5
+      },
+      "claude-code-readonly": {
+        "type": "claude-code",
+        "command": "claude",
+        "outputFormat": "stream-json",
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS"
+        ],
+        "permissionMode": "default",
+        "timeoutMs": 600000
+      },
+      "claude-code-write": {
+        "type": "claude-code",
+        "command": "claude",
+        "outputFormat": "stream-json",
+        "allowedTools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "LS",
+          "Edit",
+          "MultiEdit",
+          "Write",
+          "Bash"
+        ],
+        "permissionMode": "acceptEdits",
+        "requiresApproval": true,
+        "timeoutMs": 900000
+      },
+      "codex-readonly": {
+        "type": "codex",
+        "command": "codex",
+        "sandbox": "read-only",
+        "json": true,
+        "ephemeral": true,
+        "timeoutMs": 600000
+      },
+      "codex-workspace-write": {
+        "type": "codex",
+        "command": "codex",
+        "sandbox": "workspace-write",
+        "json": true,
+        "ephemeral": true,
+        "requiresApproval": true,
+        "timeoutMs": 900000
+      },
+      "opencode": {
+        "type": "opencode",
+        "command": "opencode",
+        "requiresApproval": true,
+        "timeoutMs": 900000
+      },
+      "docker-node-readonly": {
+        "type": "docker",
+        "image": "node:22-alpine",
+        "args": [
+          "node",
+          "-e",
+          "process.stdin.pipe(process.stdout)"
+        ],
+        "readOnly": true,
+        "network": "none",
+        "timeoutMs": 600000
+      },
+      "hermes-http": {
+        "type": "http",
+        "endpoint": "http://localhost:8788/v1/agent/run",
+        "headers": {
+          "authorization": "Bearer ${env:HERMES_API_KEY}"
+        },
+        "requiresApproval": true,
+        "timeoutMs": 600000
+      },
+      "openclaw-http": {
+        "type": "http",
+        "endpoint": "http://localhost:8797/v1/agent/run",
+        "headers": {
+          "authorization": "Bearer ${env:OPENCLAW_API_KEY}"
+        },
+        "requiresApproval": true,
+        "timeoutMs": 600000
+      }
+    }
+  }
+}
