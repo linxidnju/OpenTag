@@ -11,6 +11,13 @@ import { AdminServer } from "./admin/AdminServer.js";
 import { ToolRegistry } from "./tools/ToolRegistry.js";
 import { McpServerCore } from "./mcp/McpServerCore.js";
 import { McpStdioServer } from "./mcp/McpStdioServer.js";
+import { ChannelStatusService } from "./channel/ChannelStatusService.js";
+import { SlackFileManager } from "./slack/SlackFileManager.js";
+import { SlackPinnedContextReader } from "./slack/SlackPinnedContextReader.js";
+import { SlackWorkspaceSearcher } from "./slack/SlackWorkspaceSearcher.js";
+import { WorkspaceSearchIndexer } from "./search/WorkspaceSearchIndexer.js";
+import { ArtifactUploader } from "./slack/ArtifactUploader.js";
+import { ChannelMemoryService } from "./memory/ChannelMemoryService.js";
 import { createLogger } from "./utils/logger.js";
 
 export async function buildOpenTag(config, options = {}) {
@@ -23,6 +30,12 @@ export async function buildOpenTag(config, options = {}) {
 
   const runtimeRegistry = new RuntimeRegistry({ config: config.runtimes, logger });
   const policyEngine = new PolicyEngine({ config, logger });
+  const slackFileManager = new SlackFileManager({ config, logger });
+  const pinnedContextReader = new SlackPinnedContextReader({ config, logger });
+  const workspaceSearchIndexer = new WorkspaceSearchIndexer({ config, store, logger });
+  const slackWorkspaceSearcher = new SlackWorkspaceSearcher({ config, logger });
+  const channelMemoryService = new ChannelMemoryService({ store, logger });
+  const artifactUploader = new ArtifactUploader({ config, logger });
   const contextBuilder = new ContextBuilder({ config, store, logger });
   const sessionManager = new SessionManager({ config, store, logger });
 
@@ -34,14 +47,21 @@ export async function buildOpenTag(config, options = {}) {
     policyEngine,
     contextBuilder,
     sessionManager,
+    slackFileManager,
+    pinnedContextReader,
+    workspaceSearchIndexer,
+    slackWorkspaceSearcher,
+    channelMemoryService,
+    artifactUploader,
     logger
   });
 
   const toolRegistry = new ToolRegistry({ config, store, logger });
+  const channelStatusService = new ChannelStatusService({ config, store, logger });
   const mcpCore = new McpServerCore({ config, toolRegistry, logger });
   const mcpStdioServer = new McpStdioServer({ core: mcpCore, logger });
   const adminServer = new AdminServer({ config, engine, store, runtimeRegistry, logger });
-  const slackGateway = new SlackGateway({ config, engine, logger });
+  const slackGateway = new SlackGateway({ config, engine, channelStatusService, logger });
   const consoleGateway = new ConsoleGateway({ config, engine, logger });
 
   return {
@@ -51,10 +71,17 @@ export async function buildOpenTag(config, options = {}) {
     sandboxManager,
     runtimeRegistry,
     policyEngine,
+    slackFileManager,
+    pinnedContextReader,
+    workspaceSearchIndexer,
+    slackWorkspaceSearcher,
+    channelMemoryService,
+    artifactUploader,
     contextBuilder,
     sessionManager,
     engine,
     toolRegistry,
+    channelStatusService,
     mcpCore,
     mcpStdioServer,
     adminServer,

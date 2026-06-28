@@ -156,11 +156,34 @@ function evaluateAllowedRoots({ channelConfig, runtimeSpec }) {
 
 function matchTool(pattern, toolName) {
   if (pattern === "*") return true;
+  const names = toolAliases(toolName);
   try {
-    return new RegExp(`^${String(pattern).replaceAll("*", ".*")}$`, "i").test(String(toolName || ""));
+    const regex = new RegExp(`^${String(pattern).replaceAll("*", ".*")}$`, "i");
+    return names.some((name) => regex.test(name));
   } catch {
-    return String(pattern).toLowerCase() === String(toolName || "").toLowerCase();
+    return names.some((name) => String(pattern).toLowerCase() === name.toLowerCase());
   }
+}
+
+function toolAliases(toolName) {
+  const value = String(toolName || "");
+  const aliases = new Set([value]);
+  if (value === "command_execution") {
+    aliases.add("Bash");
+    aliases.add("Shell");
+  }
+  if (value === "file_change") {
+    aliases.add("Edit");
+    aliases.add("Write");
+    aliases.add("MultiEdit");
+  }
+  if (value === "mcp_tool_call") aliases.add("MCP");
+  if (value === "web_search" || value === "web.search" || value === "WebSearch") {
+    aliases.add("WebSearch");
+    aliases.add("web_search");
+    aliases.add("web.search");
+  }
+  return [...aliases];
 }
 
 function stringifyArguments(value) {

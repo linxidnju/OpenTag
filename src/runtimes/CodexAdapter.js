@@ -13,6 +13,8 @@ export class CodexAdapter extends GenericCliRuntimeAdapter {
     const args = ["exec"];
     if (this.spec.json !== false) args.push("--json");
     if (this.spec.ephemeral !== false) args.push("--ephemeral");
+    const cwd = this.spec.cwd || input.sandbox?.workspaceRoot;
+    if (cwd) args.push("--cd", cwd);
     if (this.spec.sandbox) args.push("--sandbox", this.spec.sandbox);
     if (this.spec.model) args.push("--model", this.spec.model);
     if (this.spec.ignoreUserConfig) args.push("--ignore-user-config");

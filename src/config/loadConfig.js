@@ -18,12 +18,14 @@ const DEFAULT_CONFIG = {
     processThreadReplies: true,
     processDirectMessages: true,
     hydrateThreadContext: true,
-    maxHydratedMessages: 20,
+    maxHydratedMessages: 50,
     enableEventDedupe: true,
     dedupeEvents: true,
     streamUpdateMs: 1500,
     maxMessageChars: 3500,
-    uploadArtifacts: false,
+    uploadArtifacts: true,
+    maxDownloadBytes: 25_000_000,
+    allowedFileTypes: ["csv", "txt", "md", "json", "png", "jpg", "jpeg", "pdf"],
     port: 3000
   },
   admin: {
@@ -47,6 +49,23 @@ const DEFAULT_CONFIG = {
     maxConcurrentTurnsPerSession: 1,
     idleTtlHours: 72
   },
+  channelStatus: {
+    defaultDays: 14,
+    maxThreads: 50,
+    historyPageLimit: 100,
+    maxRepliesPerThread: 50
+  },
+  workspaceSearch: {
+    enabled: true,
+    slackSearchEnabled: false,
+    userTokenEnv: "SLACK_USER_TOKEN",
+    defaultDays: 14,
+    maxChannels: 10,
+    maxMessagesPerChannel: 200,
+    maxPromptChannelHistoryMessages: 20,
+    maxHits: 8,
+    slackSearchMaxResults: 10
+  },
   sandbox: {
     rootDir: "./.opentag/sandboxes",
     workspaceRoot: null,
@@ -55,7 +74,7 @@ const DEFAULT_CONFIG = {
     retentionHours: 24,
     collectArtifacts: true,
     artifactMaxBytes: 5_000_000,
-    artifactInclude: ["*.md", "*.txt", "*.json", "*.patch", "*.diff", "*.log"]
+    artifactInclude: ["*.md", "*.txt", "*.json", "*.patch", "*.diff", "*.log", "*.csv", "*.png", "*.jpg", "*.jpeg", "*.pdf", "*.html", "*.svg"]
   },
   security: {
     redactSecrets: true,

@@ -25,8 +25,10 @@ test("cleanSlackText unwraps Slack links and mentions", () => {
 });
 
 test("mapSlackEventToMessage normalizes files and bot self messages", () => {
-  const msg = mapSlackEventToMessage({ event: { channel: "C1", ts: "1", user: "U1", text: "file", files: [{ id: "F1", name: "a.txt", mimetype: "text/plain", size: 3 }] }, botUserId: "B1", teamId: "T1", eventId: "E1" });
+  const msg = mapSlackEventToMessage({ event: { channel: "C1", ts: "1", user: "U1", text: "file", files: [{ id: "F1", name: "a.txt", mimetype: "text/plain", filetype: "txt", size: 3, url_private: "https://files/1", url_private_download: "https://files/1/download", permalink: "https://slack/file/1" }] }, botUserId: "B1", teamId: "T1", eventId: "E1" });
   assert.equal(msg.eventId, "E1");
   assert.equal(msg.files[0].name, "a.txt");
+  assert.equal(msg.files[0].url_private_download, "https://files/1/download");
+  assert.equal(msg.files[0].permalink, "https://slack/file/1");
   assert.equal(isBotOrSystemMessage({ user: "B1" }, "B1"), true);
 });

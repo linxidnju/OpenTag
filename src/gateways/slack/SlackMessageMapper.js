@@ -52,8 +52,13 @@ export function normalizeSlackFiles(files) {
     title: file.title,
     mimetype: file.mimetype,
     filetype: file.filetype,
+    prettyType: file.pretty_type,
+    mode: file.mode,
     size: file.size,
     url_private: file.url_private,
+    url_private_download: file.url_private_download,
+    created: file.created,
+    user: file.user,
     permalink: file.permalink
   }));
 }

@@ -45,7 +45,7 @@ export class GenericCliRuntimeAdapter {
     const queue = new AsyncQueue();
     const state = { finalText: "", stdoutBytes: 0, stderrBytes: 0 };
 
-    yield { type: "started", message: `${this.id} launching: ${command} ${args.map(shellQuote).join(" ")}` };
+    yield { type: "started", message: "OpenTag is working on it." };
 
     const child = spawn(command, args, {
       cwd,
@@ -135,7 +135,9 @@ export function interpolate(template, input) {
     .replaceAll("{workspaceId}", input.session?.workspaceId || "")
     .replaceAll("{channelId}", input.session?.channelId || "")
     .replaceAll("{workspaceDir}", input.sandbox?.workspaceRoot || "")
-    .replaceAll("{sandboxDir}", input.sandbox?.dir || "");
+    .replaceAll("{sandboxDir}", input.sandbox?.dir || "")
+    .replaceAll("{inputDir}", input.sandbox?.inputDir || "")
+    .replaceAll("{outputDir}", input.sandbox?.outputDir || "");
 }
 
 function resolveEnv(envSpec, input, runtimeId) {
@@ -147,16 +149,12 @@ function resolveEnv(envSpec, input, runtimeId) {
     OPENTAG_WORKSPACE_ID: input.session?.workspaceId || "",
     OPENTAG_CHANNEL_ID: input.session?.channelId || "",
     OPENTAG_SANDBOX_DIR: input.sandbox?.dir || "",
-    OPENTAG_WORKSPACE_DIR: input.sandbox?.workspaceRoot || ""
+    OPENTAG_WORKSPACE_DIR: input.sandbox?.workspaceRoot || "",
+    OPENTAG_INPUT_DIR: input.sandbox?.inputDir || "",
+    OPENTAG_OUTPUT_DIR: input.sandbox?.outputDir || ""
   };
   for (const [key, value] of Object.entries(envSpec || {})) {
     resolved[key] = interpolate(String(value), input).replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)}/g, (_, name) => process.env[name] || "");
   }
   return resolved;
-}
-
-function shellQuote(value) {
-  const text = String(value);
-  if (/^[A-Za-z0-9_./:=@-]+$/.test(text)) return text;
-  return `'${text.replaceAll("'", "'\\''")}'`;
 }

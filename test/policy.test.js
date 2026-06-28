@@ -5,7 +5,7 @@ import { PolicyEngine } from "../src/core/PolicyEngine.js";
 const config = {
   security: {
     defaultDenyPatterns: ["rm\\s+-rf\\s+/"],
-    defaultApprovalPatterns: ["deploy", "delete"]
+    defaultApprovalPatterns: ["deploy", "delete", "删除"]
   }
 };
 
@@ -31,6 +31,12 @@ test("policy denies destructive prompt", () => {
 test("policy requires approval for deploy prompt", () => {
   const policy = new PolicyEngine({ config, logger: console });
   const result = policy.evaluate({ message: { userId: "U1", text: "deploy to production" }, channelConfig, runtimeId: "mock", runtimeSpec: { type: "mock" } });
+  assert.equal(result.decision, "require_approval");
+});
+
+test("policy requires approval for Chinese delete prompt", () => {
+  const policy = new PolicyEngine({ config, logger: console });
+  const result = policy.evaluate({ message: { userId: "U1", text: "帮我删除 /tmp/a.zip" }, channelConfig, runtimeId: "mock", runtimeSpec: { type: "mock" } });
   assert.equal(result.decision, "require_approval");
 });
 
@@ -71,6 +77,16 @@ test("policy denies disallowed runtime tool calls", () => {
     channelConfig: { toolPolicy: { allowTools: ["Read", "Grep"] } }
   });
   assert.equal(result.decision, "deny");
+});
+
+test("policy allows web search alias when WebSearch is allowed", () => {
+  const policy = new PolicyEngine({ config, logger: console });
+  const result = policy.evaluateToolCall({
+    toolName: "web_search",
+    argumentsText: "https://example.com",
+    channelConfig: { toolPolicy: { allowTools: ["WebSearch"] } }
+  });
+  assert.equal(result.decision, "allow");
 });
 
 test("policy requires approval for risky tool arguments", () => {

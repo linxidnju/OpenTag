@@ -57,3 +57,27 @@ test("FileStore lists runs and artifacts", async () => {
     assert.equal((await store.listArtifacts({ sessionId: "sess_1" })).length, 1);
   });
 });
+
+test("FileStore persists channel reports by thread", async () => {
+  await withStore(async (store) => {
+    await store.saveChannelReport({ id: "report_1", channelId: "C1", threadTs: "100.1", topic: "launch", counts: { open: 1 } });
+    await store.saveChannelReport({ id: "report_2", channelId: "C2", threadTs: "200.1", topic: "other", counts: { open: 0 } });
+    const reports = await store.listChannelReports({ channelId: "C1", threadTs: "100.1" });
+    assert.equal(reports.length, 1);
+    assert.equal(reports[0].id, "report_1");
+  });
+});
+
+test("FileStore persists scoped memory entries", async () => {
+  await withStore(async (store) => {
+    const workspace = await store.createMemoryEntry({ workspaceId: "T1", scope: "workspace", text: "workspace fact", createdBy: "U1" });
+    const channel = await store.createMemoryEntry({ workspaceId: "T1", channelId: "G1", scope: "channel", text: "private fact", createdBy: "U2" });
+    const publicEntries = await store.listMemoryEntries({ workspaceId: "T1", channelId: "C1", includeWorkspace: true, includeChannel: false });
+    assert.deepEqual(publicEntries.map((entry) => entry.text), ["workspace fact"]);
+    const privateEntries = await store.listMemoryEntries({ workspaceId: "T1", channelId: "G1", includeWorkspace: true, includeChannel: true });
+    assert.deepEqual(privateEntries.map((entry) => entry.text), ["workspace fact", "private fact"]);
+    assert.equal(await store.deleteMemoryEntry({ workspaceId: "T1", channelId: "G1", memoryId: channel.id }), true);
+    assert.equal(await store.deleteMemoryEntry({ workspaceId: "T1", channelId: "G1", memoryId: workspace.id }), true);
+    assert.equal((await store.listMemoryEntries({ workspaceId: "T1", channelId: "G1", includeWorkspace: true, includeChannel: true })).length, 0);
+  });
+});

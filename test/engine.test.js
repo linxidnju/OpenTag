@@ -85,6 +85,21 @@ test("engine slash command lists sessions", async () => {
   }
 });
 
+test("engine handles remember and memory commands without runtime", async () => {
+  const { app, dir } = await makeApp();
+  try {
+    const r = recorder();
+    await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", channelType: "channel", threadId: "1", messageId: "1", userId: "U1", text: "remember: launch owner is Jordan", cleanText: "remember: launch owner is Jordan", isMention: true, raw: {} }, r);
+    assert.ok(r.events.some((event) => event[0] === "text" && event[1].includes("workspace memory")));
+    assert.equal((await app.store.listRuns()).length, 0);
+    const r2 = recorder();
+    await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", channelType: "channel", threadId: "1", messageId: "2", userId: "U1", text: "memory", cleanText: "memory", isMention: true, raw: {} }, r2);
+    assert.ok(r2.events.some((event) => event[0] === "text" && event[1].includes("launch owner is Jordan")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("engine approval approve resumes runtime", async () => {
   const { app, dir } = await makeApp();
   try {
@@ -136,6 +151,106 @@ test("engine records run metadata and collects sandbox artifacts", async () => {
     assert.equal(runs[0].status, "completed");
     assert.equal(artifacts.length, 1);
     assert.equal(artifacts[0].relativePath, "result.md");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("engine downloads Slack CSV input and uploads generated artifact to thread", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "opentag-slack-roundtrip-"));
+  const config = {
+    app: { name: "OpenTag", dataDir: path.join(dir, "data"), logLevel: "silent" },
+    gateway: "console",
+    slack: {
+      mode: "socket",
+      processThreadReplies: true,
+      streamUpdateMs: 1,
+      maxMessageChars: 35000,
+      uploadArtifacts: true,
+      maxDownloadBytes: 25000000,
+      allowedFileTypes: ["csv", "txt", "md", "json", "png", "jpg", "jpeg", "pdf"]
+    },
+    workspaceSearch: { enabled: true, slackSearchEnabled: true, maxHits: 8 },
+    sessions: { maxContextMessages: 8, idleTtlHours: 72 },
+    sandbox: { rootDir: path.join(dir, "sandboxes"), mode: "ephemeral", cleanupOnComplete: false, retentionHours: 24, collectArtifacts: true, artifactInclude: ["*.png"] },
+    security: { redactSecrets: true, defaultDenyPatterns: [], defaultApprovalPatterns: [] },
+    workspaces: [{ workspaceId: "*", channels: [{ channelId: "*", name: "default", defaultRuntime: "chart", allowedRuntimes: ["chart"], allowedUsers: [], approvers: [], policy: { requireApprovalForWriteAccess: false, requireApprovalPatterns: [], denyPatterns: [] } }] }],
+    runtimes: {
+      default: "chart",
+      adapters: {
+        chart: {
+          type: "generic-cli",
+          command: process.execPath,
+          args: ["-e", "const fs=require('fs'); const path=require('path'); const input=fs.readFileSync(path.join(process.env.OPENTAG_INPUT_DIR,'data.csv'),'utf8'); if(!input.includes('revenue')) process.exit(2); fs.mkdirSync(process.env.OPENTAG_OUTPUT_DIR,{recursive:true}); fs.writeFileSync(path.join(process.env.OPENTAG_OUTPUT_DIR,'chart.png'), Buffer.from('png')); process.stdout.write('chart ready')"],
+          outputMode: "text",
+          requiresApproval: false,
+          timeoutMs: 5000
+        }
+      }
+    }
+  };
+  const app = await buildOpenTag(config, { logger: createLogger({ level: "silent" }) });
+  const uploaded = [];
+  try {
+    const r = {
+      ...recorder(),
+      client: {
+        fetchFile: async () => Buffer.from("date,revenue\n2026-06-28,42\n"),
+        uploadArtifact: async (payload) => {
+          uploaded.push(payload);
+          return { ok: true };
+        },
+        conversations: {
+          history: async () => ({
+            messages: [{ ts: "0.5", user: "U3", text: "historical channel note about vendor launch prep" }]
+          })
+        },
+        search: {
+          messages: async () => ({
+            messages: {
+              matches: [{
+                ts: "20.1",
+                text: "workspace search found vendor quote",
+                permalink: "https://slack/search/20.1",
+                channel: { id: "C_PUBLIC", name: "public-launch" },
+                user: "U9"
+              }]
+            }
+          })
+        },
+        pins: {
+          list: async () => ({ items: [{ type: "message", message: { ts: "2", user: "U2", text: "launch plan pinned", permalink: "https://slack/thread/2" } }] })
+        }
+      },
+      channelId: "C1",
+      threadTs: "roundtrip"
+    };
+    await app.engine.handleIncomingMessage({
+      platform: "slack",
+      workspaceId: "T1",
+      channelId: "C1",
+      threadId: "roundtrip",
+      messageId: "1",
+      userId: "U1",
+      text: "make chart",
+      cleanText: "make chart",
+      isMention: true,
+      files: [{ id: "F1", name: "data.csv", filetype: "csv", mimetype: "text/csv", size: 32, url_private_download: "https://files/data.csv", permalink: "https://slack/files/F1" }],
+      externalThreadMessages: [{ ts: "1", user: "U1", text: "make chart" }],
+      raw: {}
+    }, r);
+    assert.equal(uploaded.length, 1);
+    assert.equal(uploaded[0].channelId, "C1");
+    assert.equal(uploaded[0].threadTs, "roundtrip");
+    assert.equal(uploaded[0].artifact.relativePath, "outputs/chart.png");
+    const sessions = await app.store.listSessions();
+    const audit = await app.store.listAudit({ sessionId: sessions[0].id });
+    assert.ok(audit.some((event) => event.type === "slack_file.downloaded"));
+    assert.ok(audit.some((event) => event.type === "artifact.uploaded"));
+    const hits = await app.workspaceSearchIndexer.search({ workspaceId: "T1", channelId: "C1", query: "launch revenue vendor" });
+    assert.ok(hits.some((hit) => hit.type === "pin"));
+    assert.ok(hits.some((hit) => hit.type === "file"));
+    assert.ok(hits.some((hit) => hit.type === "message" && hit.text.includes("historical channel note")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

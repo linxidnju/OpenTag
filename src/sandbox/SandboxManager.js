@@ -19,6 +19,10 @@ export class SandboxManager {
     const runId = randomId("run");
     const dir = path.join(this.rootDir, safeName(sessionId), runId);
     await ensureDir(dir);
+    const inputDir = path.join(dir, "inputs");
+    const outputDir = path.join(dir, "outputs");
+    await ensureDir(inputDir);
+    await ensureDir(outputDir);
     const configuredRoot = channelConfig.workspaceRoot || channelConfig.cwd || this.config.workspaceRoot;
     const workspaceRoot = configuredRoot ? path.resolve(configuredRoot) : dir;
     if (configuredRoot) {
@@ -32,6 +36,8 @@ export class SandboxManager {
       sessionId,
       runtimeId,
       dir,
+      inputDir,
+      outputDir,
       workspaceRoot,
       mode: this.config.mode || "ephemeral",
       createdAt: nowIso()
@@ -51,7 +57,7 @@ export class SandboxManager {
   async collectArtifacts({ sandbox, sessionId, runtimeId }) {
     if (!this.config.collectArtifacts) return [];
     const maxBytes = Number(this.config.artifactMaxBytes || 5_000_000);
-    const include = this.config.artifactInclude || ["*.md", "*.txt", "*.json", "*.patch", "*.diff", "*.log"];
+    const include = this.config.artifactInclude || ["*.md", "*.txt", "*.json", "*.patch", "*.diff", "*.log", "*.csv", "*.png", "*.jpg", "*.jpeg", "*.pdf", "*.html", "*.svg"];
     const files = await walkFiles(sandbox.dir, { maxDepth: 5, maxFiles: 200 });
     const artifacts = [];
     for (const filePath of files) {

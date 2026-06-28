@@ -6,7 +6,7 @@
   "private": false,
   "license": "Apache-2.0",
   "bin": {
-    "opentag": "./bin/opentag.js"
+    "opentag": "./bin/opentag.mjs"
   },
   "engines": {
     "node": ">=20.11.0"
@@ -20,7 +20,11 @@
     "check": "node ./scripts/check-repo.js",
     "start:admin": "node ./bin/opentag.js admin --config ./examples/opentag.config.example.json",
     "mcp": "node ./bin/opentag.js mcp --config ./examples/opentag.config.example.json",
-    "smoke": "node ./bin/opentag.js run --runtime mock --config ./examples/opentag.config.example.json --prompt \"hello OpenTag\""
+    "smoke": "node ./bin/opentag.js run --runtime mock --config ./examples/opentag.config.example.json --prompt \"hello OpenTag\"",
+    "opentag:setup": "node ./bin/opentag.mjs setup --local --project . --runtime codex",
+    "opentag:doctor": "node ./bin/opentag.mjs doctor",
+    "opentag:daemon": "node ./bin/opentag.mjs daemon start",
+    "test:v01": "node ./scripts/smoke-v01.mjs"
   },
   "dependencies": {
     "@slack/bolt": "^4.4.0",

@@ -12,10 +12,7 @@ export class MockRuntimeAdapter {
   async *run({ prompt, session, signal }) {
     yield { type: "started", message: "Mock runtime started." };
     const lines = [
-      "OpenTag mock runtime received the thread context.\n",
-      `Session: ${session.id}\n`,
-      "MVP checks: Slack gateway, session memory, policy, approval, runtime adapter, audit log.\n",
-      "This is a deterministic response; switch to claude-code/codex/opencode runtime for real agent work."
+      "收到，我已经连上这个 Slack 线程。"
     ];
     for (const line of lines) {
       if (signal?.aborted) throw new Error("aborted");

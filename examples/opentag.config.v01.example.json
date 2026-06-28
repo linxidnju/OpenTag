@@ -1,0 +1,82 @@
+{
+  "app": {
+    "name": "OpenTag",
+    "dataDir": "~/.opentag/data",
+    "logLevel": "info"
+  },
+  "gateway": "slack",
+  "slack": {
+    "mode": "socket",
+    "botTokenEnv": "SLACK_BOT_TOKEN",
+    "appTokenEnv": "SLACK_APP_TOKEN",
+    "signingSecretEnv": "SLACK_SIGNING_SECRET",
+    "slashCommand": "/opentag",
+    "processThreadReplies": true,
+    "processDirectMessages": true,
+    "hydrateThreadContext": true,
+    "maxHydratedMessages": 50,
+    "uploadArtifacts": true,
+    "maxDownloadBytes": 25000000,
+    "allowedFileTypes": ["csv", "txt", "md", "json", "png", "jpg", "jpeg", "pdf"]
+  },
+  "admin": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8787,
+    "requireToken": false
+  },
+  "sandbox": {
+    "rootDir": "~/.opentag/sandboxes",
+    "workspaceRoot": ".",
+    "mode": "ephemeral",
+    "collectArtifacts": true
+  },
+  "workspaceSearch": {
+    "enabled": true,
+    "slackSearchEnabled": false,
+    "userTokenEnv": "SLACK_USER_TOKEN",
+    "defaultDays": 14,
+    "maxChannels": 10,
+    "maxMessagesPerChannel": 200,
+    "maxPromptChannelHistoryMessages": 20,
+    "maxHits": 8,
+    "slackSearchMaxResults": 10
+  },
+  "workspaces": [
+    {
+      "workspaceId": "*",
+      "channels": [
+        {
+          "channelId": "*",
+          "defaultRuntime": "codex",
+          "allowedRuntimes": ["mock", "codex", "opencode", "openclaw", "hermes"],
+          "allowedRoots": ["."],
+          "workspaceRoot": ".",
+          "policy": {
+            "requireApprovalForWriteAccess": true,
+            "allowSelfApproval": true,
+            "requireApprovalPatterns": ["deploy", "production", "delete", "push"],
+            "denyPatterns": []
+          }
+        }
+      ]
+    }
+  ],
+  "runtimes": {
+    "default": "codex",
+    "adapters": {
+      "mock": { "type": "mock" },
+      "codex": {
+        "type": "codex",
+        "command": "codex",
+        "sandbox": "workspace-write",
+        "json": true,
+        "ephemeral": true,
+        "requiresApproval": true
+      },
+      "opencode": { "type": "opencode", "command": "opencode", "requiresApproval": true },
+      "openclaw": { "type": "generic-cli", "command": "openclaw", "args": ["run", "{prompt}"], "requiresApproval": true },
+      "hermes": { "type": "generic-cli", "command": "hermes", "args": ["run", "{prompt}"], "requiresApproval": true }
+    }
+  }
+}

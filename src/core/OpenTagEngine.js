@@ -2,9 +2,10 @@ import { resolveChannelConfig } from "../config/loadConfig.js";
 import { randomId } from "../utils/id.js";
 import { nowIso, hoursFromNow } from "../utils/time.js";
 import { redact } from "../utils/redact.js";
+import { isBotOrSystemMessage } from "../gateways/slack/SlackMessageMapper.js";
 
 export class OpenTagEngine {
-  constructor({ config, store, sandboxManager, runtimeRegistry, policyEngine, contextBuilder, sessionManager, logger }) {
+  constructor({ config, store, sandboxManager, runtimeRegistry, policyEngine, contextBuilder, sessionManager, slackFileManager, pinnedContextReader, workspaceSearchIndexer, slackWorkspaceSearcher, channelMemoryService, artifactUploader, logger }) {
     this.config = config;
     this.store = store;
     this.sandboxManager = sandboxManager;
@@ -12,6 +13,12 @@ export class OpenTagEngine {
     this.policyEngine = policyEngine;
     this.contextBuilder = contextBuilder;
     this.sessionManager = sessionManager;
+    this.slackFileManager = slackFileManager;
+    this.pinnedContextReader = pinnedContextReader;
+    this.workspaceSearchIndexer = workspaceSearchIndexer;
+    this.slackWorkspaceSearcher = slackWorkspaceSearcher;
+    this.channelMemoryService = channelMemoryService;
+    this.artifactUploader = artifactUploader;
     this.logger = logger;
     this.queues = new Map();
     this.abortControllers = new Map();
@@ -42,6 +49,8 @@ export class OpenTagEngine {
 
     const command = parseOpenTagCommand(cleanText);
     if (command) return this.handleCommand({ command, session, message: { ...message, cleanText }, responder, channel });
+    const memoryCommand = parseMemoryCommand(cleanText);
+    if (memoryCommand) return this.handleMemoryCommand({ command: memoryCommand, session, message: { ...message, cleanText }, responder });
 
     await this.store.appendMessage(session.id, {
       role: "user",
@@ -131,6 +140,44 @@ export class OpenTagEngine {
     }
   }
 
+  async handleMemoryCommand({ command, session, message, responder }) {
+    if (!this.channelMemoryService) {
+      await responder.sendText("Memory is not configured.");
+      return;
+    }
+    if (command.name === "remember") {
+      const entry = await this.channelMemoryService.remember({
+        workspaceId: session.workspaceId,
+        channelId: session.channelId,
+        channelType: message.channelType,
+        text: command.text,
+        createdBy: message.userId,
+        source: { platform: message.platform, messageId: message.messageId, threadId: message.threadId }
+      });
+      const label = entry.scope === "channel" ? "private channel" : "workspace";
+      await responder.sendText(`已记住（${label} memory）：${entry.id}`);
+      return;
+    }
+    if (command.name === "list") {
+      const entries = await this.channelMemoryService.listForContext({
+        workspaceId: session.workspaceId,
+        channelId: session.channelId,
+        channelType: message.channelType
+      });
+      await responder.sendText(entries.length ? entries.map((entry) => `- ${entry.id} [${entry.scope}]: ${entry.text}`).join("\n") : "当前没有可用 memory。");
+      return;
+    }
+    if (command.name === "forget") {
+      const deleted = await this.channelMemoryService.forget({
+        workspaceId: session.workspaceId,
+        channelId: session.channelId,
+        memoryId: command.memoryId,
+        deletedBy: message.userId
+      });
+      await responder.sendText(deleted ? `已删除 memory：${command.memoryId}` : `没有找到 memory：${command.memoryId}`);
+    }
+  }
+
   async handleSlashCommand({ text, responder }) {
     const command = parseAdminCommand(text || "help");
     if (command.name === "help") return responder.sendText(formatHelp());
@@ -204,7 +251,7 @@ export class OpenTagEngine {
     const approval = await this.store.getApproval(approvalId);
     if (!approval) throw new Error(`Approval not found: ${approvalId}`);
     if (approval.status !== "pending") {
-      await responder.sendText(`Approval ${approvalId} is already ${approval.status}.`);
+      await this.store.appendAudit({ type: "approval.duplicate_action_ignored", approvalId, sessionId: approval.sessionId, approverUserId, status: approval.status });
       return;
     }
     if (Date.parse(approval.expiresAt) < Date.now()) {
@@ -231,7 +278,7 @@ export class OpenTagEngine {
       return;
     }
 
-    await responder.sendText(`Approved by <@${approverUserId}>. OpenTag is starting the runtime turn.`);
+    await responder.sendStatus("OpenTag is working on it.");
     return this.enqueue(approval.sessionId, async () => {
       await this.processTurn({
         sessionId: approval.sessionId,
@@ -263,6 +310,8 @@ export class OpenTagEngine {
   async executeRuntimeTurn({ session, message, responder, runtimeId, channelConfig, approvedBy }) {
     const adapter = this.runtimeRegistry.get(runtimeId);
     const sandbox = await this.sandboxManager.createSandbox({ sessionId: session.id, runtimeId, channelConfig });
+    const preparedContext = await this.prepareRuntimeContext({ message, responder, sandbox, session, runtimeId });
+    message = { ...message, ...preparedContext, sandboxInputDir: sandbox.inputDir, sandboxOutputDir: sandbox.outputDir };
     const prompt = await this.contextBuilder.build({ session, incomingMessage: message, channelConfig, runtimeId });
     const controller = new AbortController();
     this.abortControllers.set(session.id, controller);
@@ -297,9 +346,12 @@ export class OpenTagEngine {
         } else if (event.type === "tool_call") {
           const toolName = event.name || "tool";
           const toolPolicy = this.policyEngine.evaluateToolCall({ toolName, argumentsText: event.argumentsText || event.arguments || "", channelConfig });
-          await responder.sendStatus(`Runtime tool: ${toolName}${toolPolicy.decision !== "allow" ? ` (${toolPolicy.decision})` : ""}`);
           await this.store.appendAudit({ type: "runtime.tool_call", sessionId: session.id, runtimeId, tool: toolName, risk: event.risk || null, decision: toolPolicy.decision, reason: toolPolicy.reason });
           if (toolPolicy.decision === "deny") throw new Error(`Tool call denied: ${toolPolicy.reason}`);
+          if (approvedBy && toolPolicy.decision === "require_approval") {
+            await this.store.appendAudit({ type: "runtime.tool_call_covered_by_turn_approval", sessionId: session.id, runtimeId, tool: toolName, approvedBy, reason: toolPolicy.reason });
+            continue;
+          }
           if (toolPolicy.decision === "require_approval") {
             const approval = await this.createApproval({ session, message, runtimeId, channelConfig, policy: toolPolicy, kind: "tool_call" });
             await this.sessionManager.setStatus(session, "waiting_approval", { waitingApprovalId: approval.id, currentRunId: null });
@@ -331,7 +383,7 @@ export class OpenTagEngine {
         return;
       }
 
-      const collectedArtifacts = await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, logger: this.logger });
+      const collectedArtifacts = await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger });
       await responder.complete(finalText || emittedText || "Runtime completed.");
       await this.store.appendMessage(session.id, { role: "assistant", runtimeId, text: finalText || emittedText || "Runtime completed." });
       session = await this.sessionManager.incrementTurn(session);
@@ -340,8 +392,8 @@ export class OpenTagEngine {
       await this.store.appendAudit({ type: "runtime.completed", sessionId: session.id, runtimeId, sandboxId: sandbox.id, artifactCount: collectedArtifacts.length });
     } catch (error) {
       const messageText = error && error.message ? error.message : String(error);
-      await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, logger: this.logger }).catch(() => []);
-      await responder.fail(`Runtime ${runtimeId} failed: ${messageText}`);
+      await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger }).catch(() => []);
+      await responder.fail(messageText);
       const status = controller.signal.aborted ? "cancelled" : "failed";
       await this.sessionManager.setStatus(session, status, { lastError: messageText, currentRunId: null });
       await this.store.updateRun(sandbox.id, { status, error: messageText, completedAt: nowIso() }).catch(() => null);
@@ -349,6 +401,82 @@ export class OpenTagEngine {
     } finally {
       this.abortControllers.delete(session.id);
       await this.sandboxManager.cleanupSandbox(sandbox).catch((error) => this.logger.warn("sandbox.cleanup_failed", { sessionId: session.id, sandboxId: sandbox.id, error: error.message }));
+    }
+  }
+
+  async prepareRuntimeContext({ message, responder, sandbox, session, runtimeId }) {
+    const client = responder?.client;
+    const downloadedFiles = await this.slackFileManager?.downloadMessageFiles({
+      client,
+      message,
+      sandbox,
+      store: this.store,
+      sessionId: session.id,
+      runtimeId
+    }) || [];
+    const pinnedItems = await this.pinnedContextReader?.read({
+      client,
+      channelId: message.channelId,
+      botUserId: message.botUserId
+    }) || [];
+    const channelHistoryMessages = await this.readChannelHistory({
+      client,
+      channelId: message.channelId,
+      botUserId: message.botUserId
+    });
+    const channelMemory = await this.channelMemoryService?.listForContext({
+      workspaceId: session.workspaceId,
+      channelId: session.channelId,
+      channelType: message.channelType
+    }) || [];
+    const threadMessages = [
+      ...channelHistoryMessages,
+      ...(message.externalThreadMessages || []),
+      { text: message.cleanText || message.text, ts: message.messageId, threadId: message.threadId }
+    ];
+    await this.workspaceSearchIndexer?.indexRuntimeContext({
+      workspaceId: session.workspaceId,
+      channelId: session.channelId,
+      threadMessages,
+      pinnedItems,
+      files: downloadedFiles
+    });
+    const localSearchHits = await this.workspaceSearchIndexer?.search({
+      workspaceId: session.workspaceId,
+      channelId: session.channelId,
+      query: message.cleanText || message.text || ""
+    }) || [];
+    const slackSearchHits = await this.slackWorkspaceSearcher?.search({
+      client,
+      query: message.cleanText || message.text || "",
+      limit: this.config.workspaceSearch?.slackSearchMaxResults
+    }) || [];
+    const workspaceSearchHits = [...slackSearchHits, ...localSearchHits].slice(0, Number(this.config.workspaceSearch?.maxHits || 8));
+    return { downloadedFiles, pinnedItems, channelHistoryMessages, channelMemory, workspaceSearchHits };
+  }
+
+  async readChannelHistory({ client, channelId, botUserId }) {
+    if (!client?.conversations?.history || !channelId || this.config.workspaceSearch?.enabled === false) return [];
+    const days = Number(this.config.workspaceSearch?.defaultDays || 14);
+    const configuredLimit = Number(this.config.workspaceSearch?.maxMessagesPerChannel || 200);
+    const limit = Math.max(1, Math.min(configuredLimit, 200));
+    const oldest = String(Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000));
+    try {
+      const response = await client.conversations.history({
+        channel: channelId,
+        limit,
+        oldest,
+        inclusive: true
+      });
+      return (response.messages || [])
+        .filter((item) => !isBotOrSystemMessage(item, { botUserId, ignoreEditedMessages: this.config.slack?.ignoreEditedMessages }))
+        .map((item) => ({
+          ...item,
+          text: String(item.text || "").replace(/\s+/g, " ").trim()
+        }));
+    } catch (error) {
+      this.logger?.warn?.("slack.channel_history_failed", { channelId, error: error.message });
+      return [];
     }
   }
 
@@ -382,7 +510,7 @@ export class OpenTagEngine {
 }
 
 
-async function collectAndRecordArtifacts({ store, sandboxManager, sandbox, sessionId, runtimeId, responder, logger }) {
+async function collectAndRecordArtifacts({ store, sandboxManager, sandbox, sessionId, runtimeId, responder, artifactUploader, logger }) {
   let artifacts = [];
   try {
     artifacts = await sandboxManager.collectArtifacts({ sandbox, sessionId, runtimeId });
@@ -402,10 +530,24 @@ async function collectAndRecordArtifacts({ store, sandboxManager, sandbox, sessi
     }
   }
 
-  if (created.length && responder?.sendText) {
-    const lines = created.slice(0, 8).map((artifact) => `- ${artifact.relativePath || artifact.path} (${artifact.size} bytes)`);
-    const suffix = created.length > 8 ? `\n- ... ${created.length - 8} more` : "";
-    await responder.sendText(`Artifacts collected:\n${lines.join("\n")}${suffix}`).catch?.(() => null);
+  const shouldUpload = Boolean(artifactUploader?.isEnabled?.() && responder?.client && responder?.channelId && responder?.threadTs);
+  if (created.length && shouldUpload && responder?.sendText) {
+    const uploaded = await artifactUploader?.uploadArtifacts({
+      client: responder.client,
+      channelId: responder.channelId,
+      threadTs: responder.threadTs,
+      artifacts: created,
+      store,
+      sessionId,
+      runtimeId
+    }).catch((error) => {
+      logger?.warn?.("artifact.upload_batch_failed", { sessionId, runtimeId, error: error.message });
+      return [];
+    });
+    const uploadedCount = (uploaded || []).filter((item) => item.ok).length;
+    if (uploadedCount < created.length) {
+      await responder.sendText(uploadedCount ? "部分文件已上传，另有文件已保存在本地 artifact 记录中。" : "文件已生成，但上传到 Slack 失败；已保存在本地 artifact 记录中。").catch?.(() => null);
+    }
   }
 
   return created;
@@ -421,6 +563,16 @@ function parseOpenTagCommand(text) {
   const match = String(text).trim().match(/^\/opentag(?:\s+(help|status|runtimes|cancel|sessions|approvals|audit|context))?\s*$/i);
   if (!match) return null;
   return { name: (match[1] || "help").toLowerCase() };
+}
+
+function parseMemoryCommand(text) {
+  const value = String(text || "").trim();
+  const remember = value.match(/^(?:remember|please remember|记住|请记住|帮我记住)(?:\s+(?:for|in)\s+(?:this\s+)?channel|这个频道|在这个频道)?[:：\s]+([\s\S]+)$/i);
+  if (remember?.[1]?.trim()) return { name: "remember", text: remember[1].trim() };
+  const forget = value.match(/^(?:forget memory|forget|delete memory|删除记忆|忘记)\s+([A-Za-z0-9_.-]+)$/i);
+  if (forget?.[1]) return { name: "forget", memoryId: forget[1] };
+  if (/^(?:memory|show memory|what do you remember|list memory|你记得什么|你记住了什么|显示记忆|查看记忆)\??$/i.test(value)) return { name: "list" };
+  return null;
 }
 
 function parseAdminCommand(text) {

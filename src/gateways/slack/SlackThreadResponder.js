@@ -10,9 +10,15 @@ export class SlackThreadResponder {
     this.flushTimer = null;
     this.maxMessageChars = Math.min(config.slack.maxMessageChars || 3900, 3900);
     this.streamUpdateMs = config.slack.streamUpdateMs || 1500;
+    this.quietStatus = config.slack.quietStatus !== false;
   }
 
   async sendStatus(text) {
+    if (this.quietStatus) {
+      const quietText = formatStatus(text);
+      if (!quietText) return;
+      return this.upsertResponse(quietText);
+    }
     const body = { channel: this.channelId, thread_ts: this.threadTs, text: truncate(text, this.maxMessageChars) };
     if (!this.statusTs) {
       const response = await this.callSlack(() => this.client.chat.postMessage(body));
@@ -49,7 +55,7 @@ export class SlackThreadResponder {
       this.flushTimer = null;
     }
     if (!this.streamBuffer) return;
-    await this.sendStatus(this.streamBuffer);
+    await this.upsertResponse(this.streamBuffer);
   }
 
   async complete(text) {
@@ -64,7 +70,7 @@ export class SlackThreadResponder {
 
   async fail(text) {
     await this.flushStream();
-    await this.sendText(`:warning: ${text}`);
+    await this.sendText(`:warning: ${formatFailure(text)}`);
   }
 
   async sendApproval(approval) {
@@ -72,17 +78,26 @@ export class SlackThreadResponder {
     await this.callSlack(() => this.client.chat.postMessage({
       channel: this.channelId,
       thread_ts: this.threadTs,
-      text: `OpenTag requires approval: ${approval.reason}`,
+      text: "OpenTag needs your confirmation before continuing.",
       blocks: [
-        { type: "section", text: { type: "mrkdwn", text: `*OpenTag requires approval*\nReason: ${approval.reason}\nRisks: ${(approval.risks || []).join(", ") || "unknown"}\nApproval ID: \`${approval.id}\`` } },
-        { type: "context", elements: [{ type: "mrkdwn", text: `Session: \`${approval.sessionId}\` · Runtime: \`${approval.runtimeId || "unknown"}\` · Expires: ${approval.expiresAt}` }] },
+        { type: "section", text: { type: "mrkdwn", text: `*需要确认后继续*\n这个任务会交给本地 agent 执行，可能读取仓库或运行命令。` } },
         { type: "actions", elements: [
-          { type: "button", action_id: "opentag_approve", style: "primary", text: { type: "plain_text", text: "Approve once" }, value },
+          { type: "button", action_id: "opentag_approve", style: "primary", text: { type: "plain_text", text: "允许本次执行" }, value },
           { type: "button", action_id: "opentag_deny", style: "danger", text: { type: "plain_text", text: "Deny" }, value },
           { type: "button", action_id: "opentag_cancel_session", text: { type: "plain_text", text: "Cancel session" }, value }
         ] }
       ]
     }));
+  }
+
+  async upsertResponse(text) {
+    const body = { channel: this.channelId, thread_ts: this.threadTs, text: truncate(text, this.maxMessageChars) };
+    if (!this.statusTs) {
+      const response = await this.callSlack(() => this.client.chat.postMessage(body));
+      this.statusTs = response?.ts || null;
+    } else {
+      await this.callSlack(() => this.client.chat.update({ ...body, ts: this.statusTs }));
+    }
   }
 
   async callSlack(fn, attempt = 0) {
@@ -117,4 +132,19 @@ function chunkText(text, max) {
   const chunks = [];
   for (let i = 0; i < value.length; i += max) chunks.push(value.slice(i, i + max));
   return chunks.length ? chunks : [""];
+}
+
+function formatFailure(text) {
+  const value = String(text || "");
+  if (/Tool call denied|allowedTools|channel policy|runtime .* failed/i.test(value)) {
+    return "这次执行被安全策略拦截了。详细原因已记录在 OpenTag 日志里。";
+  }
+  return value;
+}
+
+function formatStatus(text) {
+  const value = String(text || "");
+  if (/busy|queued/i.test(value)) return "这条线程还有任务在处理，我会排队执行。";
+  if (/^✓\s/m.test(value)) return value;
+  return "正在思考...";
 }

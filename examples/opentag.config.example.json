@@ -14,11 +14,22 @@
     "processThreadReplies": true,
     "processDirectMessages": true,
     "hydrateThreadContext": true,
-    "maxHydratedMessages": 20,
+    "maxHydratedMessages": 50,
     "enableEventDedupe": true,
     "streamUpdateMs": 1500,
     "maxMessageChars": 3500,
-    "uploadArtifacts": false,
+    "uploadArtifacts": true,
+    "maxDownloadBytes": 25000000,
+    "allowedFileTypes": [
+      "csv",
+      "txt",
+      "md",
+      "json",
+      "png",
+      "jpg",
+      "jpeg",
+      "pdf"
+    ],
     "slashCommand": "/opentag",
     "dedupeEvents": true
   },
@@ -56,8 +67,26 @@
       "*.json",
       "*.patch",
       "*.diff",
-      "*.log"
+      "*.log",
+      "*.csv",
+      "*.png",
+      "*.jpg",
+      "*.jpeg",
+      "*.pdf",
+      "*.html",
+      "*.svg"
     ]
+  },
+  "workspaceSearch": {
+    "enabled": true,
+    "slackSearchEnabled": false,
+    "userTokenEnv": "SLACK_USER_TOKEN",
+    "defaultDays": 14,
+    "maxChannels": 10,
+    "maxMessagesPerChannel": 200,
+    "maxPromptChannelHistoryMessages": 20,
+    "maxHits": 8,
+    "slackSearchMaxResults": 10
   },
   "workspaces": [
     {

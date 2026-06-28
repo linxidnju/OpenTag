@@ -2,7 +2,7 @@ import path from "node:path";
 import { readdir, writeFile, rm } from "node:fs/promises";
 import { ensureDir, readJsonIfExists, atomicWriteJson, appendNdjson, readNdjson } from "../utils/fs.js";
 import { nowIso } from "../utils/time.js";
-import { threadKey } from "../utils/id.js";
+import { randomId, threadKey } from "../utils/id.js";
 
 export class FileStore {
   constructor({ rootDir, logger }) {
@@ -15,6 +15,10 @@ export class FileStore {
     this.eventsDir = path.join(this.rootDir, "events");
     this.runsDir = path.join(this.rootDir, "runs");
     this.artifactsDir = path.join(this.rootDir, "artifacts");
+    this.threadIndexDir = path.join(this.rootDir, "thread-index");
+    this.channelReportsDir = path.join(this.rootDir, "channel-reports");
+    this.workspaceIndexDir = path.join(this.rootDir, "workspace-index");
+    this.memoriesDir = path.join(this.rootDir, "memories");
     this.auditPath = path.join(this.rootDir, "audit.ndjson");
     this.indexPath = path.join(this.sessionsDir, "_thread-index.json");
   }
@@ -26,6 +30,10 @@ export class FileStore {
     await ensureDir(this.eventsDir);
     await ensureDir(this.runsDir);
     await ensureDir(this.artifactsDir);
+    await ensureDir(this.threadIndexDir);
+    await ensureDir(this.channelReportsDir);
+    await ensureDir(this.workspaceIndexDir);
+    await ensureDir(this.memoriesDir);
   }
 
   sessionPath(sessionId) {
@@ -50,6 +58,23 @@ export class FileStore {
 
   artifactPath(artifactId) {
     return path.join(this.artifactsDir, `${safeName(artifactId)}.json`);
+  }
+
+  threadIndexPath(channelId) {
+    return path.join(this.threadIndexDir, `${safeName(channelId)}.json`);
+  }
+
+  channelReportPath(reportId) {
+    return path.join(this.channelReportsDir, `${safeName(reportId)}.json`);
+  }
+
+  workspaceIndexPath(workspaceId, channelId) {
+    return path.join(this.workspaceIndexDir, `${safeName(workspaceId || "unknown")}--${safeName(channelId || "unknown")}.json`);
+  }
+
+  memoryPath(workspaceId, scope, channelId = null) {
+    const key = scope === "workspace" ? "workspace" : `channel-${channelId || "unknown"}`;
+    return path.join(this.memoriesDir, `${safeName(workspaceId || "unknown")}--${safeName(key)}.json`);
   }
 
   async markEventProcessed(eventId, metadata = {}) {
@@ -238,6 +263,112 @@ export class FileStore {
     }
     out.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
     return limit ? out.slice(0, limit) : out;
+  }
+
+  async getThreadIndex(channelId) {
+    return readJsonIfExists(this.threadIndexPath(channelId), { channelId, threads: {}, updatedAt: null });
+  }
+
+  async saveThreadIndex(channelId, index) {
+    const record = { channelId, threads: {}, ...index, updatedAt: nowIso() };
+    await atomicWriteJson(this.threadIndexPath(channelId), record);
+    return record;
+  }
+
+  async saveChannelReport(report) {
+    const record = { ...report, createdAt: report.createdAt || nowIso(), updatedAt: nowIso() };
+    await atomicWriteJson(this.channelReportPath(record.id), record);
+    return record;
+  }
+
+  async listChannelReports({ channelId = null, threadTs = null, limit = null } = {}) {
+    const names = await readdir(this.channelReportsDir).catch(() => []);
+    const out = [];
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const report = await readJsonIfExists(path.join(this.channelReportsDir, name), null);
+      if (!report) continue;
+      if (channelId && report.channelId !== channelId) continue;
+      if (threadTs && report.threadTs !== threadTs) continue;
+      out.push(report);
+    }
+    out.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  async getWorkspaceIndex(workspaceId, channelId) {
+    return readJsonIfExists(this.workspaceIndexPath(workspaceId, channelId), { workspaceId, channelId, documents: {}, updatedAt: null });
+  }
+
+  async saveWorkspaceIndex(workspaceId, channelId, index) {
+    const record = { workspaceId, channelId, documents: {}, ...index, updatedAt: nowIso() };
+    await atomicWriteJson(this.workspaceIndexPath(workspaceId, channelId), record);
+    return record;
+  }
+
+  async listWorkspaceIndexes({ workspaceId = null } = {}) {
+    const names = await readdir(this.workspaceIndexDir).catch(() => []);
+    const out = [];
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const index = await readJsonIfExists(path.join(this.workspaceIndexDir, name), null);
+      if (!index) continue;
+      if (workspaceId && index.workspaceId !== workspaceId) continue;
+      out.push(index);
+    }
+    out.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    return out;
+  }
+
+  async createMemoryEntry({ workspaceId, channelId = null, scope, text, createdBy = null, source = null }) {
+    const filePath = this.memoryPath(workspaceId, scope, channelId);
+    const current = await readJsonIfExists(filePath, { workspaceId, channelId, scope, entries: [] });
+    const entry = {
+      id: randomId("mem"),
+      workspaceId,
+      channelId: scope === "channel" ? channelId : null,
+      scope,
+      text: String(text || "").trim(),
+      createdBy,
+      source,
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    };
+    current.entries = [...(current.entries || []), entry];
+    await atomicWriteJson(filePath, { ...current, updatedAt: nowIso() });
+    return entry;
+  }
+
+  async listMemoryEntries({ workspaceId, channelId = null, includeWorkspace = true, includeChannel = false, limit = null } = {}) {
+    const entries = [];
+    if (includeWorkspace) {
+      const workspaceMemory = await readJsonIfExists(this.memoryPath(workspaceId, "workspace"), { entries: [] });
+      entries.push(...(workspaceMemory.entries || []));
+    }
+    if (includeChannel && channelId) {
+      const channelMemory = await readJsonIfExists(this.memoryPath(workspaceId, "channel", channelId), { entries: [] });
+      entries.push(...(channelMemory.entries || []));
+    }
+    entries.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+    return limit ? entries.slice(Math.max(0, entries.length - limit)) : entries;
+  }
+
+  async deleteMemoryEntry({ workspaceId, channelId = null, memoryId }) {
+    const paths = [
+      this.memoryPath(workspaceId, "workspace"),
+      channelId ? this.memoryPath(workspaceId, "channel", channelId) : null
+    ].filter(Boolean);
+    for (const filePath of paths) {
+      const current = await readJsonIfExists(filePath, null);
+      if (!current?.entries?.length) continue;
+      const before = current.entries.length;
+      current.entries = current.entries.filter((entry) => entry.id !== memoryId);
+      if (current.entries.length !== before) {
+        await atomicWriteJson(filePath, { ...current, updatedAt: nowIso() });
+        return true;
+      }
+    }
+    return false;
   }
 
   async clear() {
