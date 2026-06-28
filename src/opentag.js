@@ -18,6 +18,7 @@ import { SlackWorkspaceSearcher } from "./slack/SlackWorkspaceSearcher.js";
 import { WorkspaceSearchIndexer } from "./search/WorkspaceSearchIndexer.js";
 import { ArtifactUploader } from "./slack/ArtifactUploader.js";
 import { ChannelMemoryService } from "./memory/ChannelMemoryService.js";
+import { AgentProxy } from "./proxy/AgentProxy.js";
 import { createLogger } from "./utils/logger.js";
 
 export async function buildOpenTag(config, options = {}) {
@@ -35,6 +36,7 @@ export async function buildOpenTag(config, options = {}) {
   const workspaceSearchIndexer = new WorkspaceSearchIndexer({ config, store, logger });
   const slackWorkspaceSearcher = new SlackWorkspaceSearcher({ config, logger });
   const channelMemoryService = new ChannelMemoryService({ store, logger });
+  const agentProxy = new AgentProxy({ config, store, logger });
   const artifactUploader = new ArtifactUploader({ config, logger });
   const contextBuilder = new ContextBuilder({ config, store, logger });
   const sessionManager = new SessionManager({ config, store, logger });
@@ -52,6 +54,7 @@ export async function buildOpenTag(config, options = {}) {
     workspaceSearchIndexer,
     slackWorkspaceSearcher,
     channelMemoryService,
+    agentProxy,
     artifactUploader,
     logger
   });
@@ -60,7 +63,7 @@ export async function buildOpenTag(config, options = {}) {
   const channelStatusService = new ChannelStatusService({ config, store, logger });
   const mcpCore = new McpServerCore({ config, toolRegistry, logger });
   const mcpStdioServer = new McpStdioServer({ core: mcpCore, logger });
-  const adminServer = new AdminServer({ config, engine, store, runtimeRegistry, logger });
+  const adminServer = new AdminServer({ config, engine, store, runtimeRegistry, agentProxy, logger });
   const slackGateway = new SlackGateway({ config, engine, channelStatusService, logger });
   const consoleGateway = new ConsoleGateway({ config, engine, logger });
 
@@ -76,6 +79,7 @@ export async function buildOpenTag(config, options = {}) {
     workspaceSearchIndexer,
     slackWorkspaceSearcher,
     channelMemoryService,
+    agentProxy,
     artifactUploader,
     contextBuilder,
     sessionManager,

@@ -44,6 +44,9 @@ export class ContextBuilder {
       `Session: ${session.id}`,
       `Sandbox outputs directory: ${incomingMessage.sandboxOutputDir || "(runtime sandbox outputs/)"}`,
       "When creating charts, reports, CSVs, or documents, write final files into the sandbox outputs directory so OpenTag can upload them back to Slack.",
+      incomingMessage.agentProxy?.enabled
+        ? `Agent Proxy: use POST ${incomingMessage.agentProxy.url} with Bearer token from OPENTAG_AGENT_PROXY_TOKEN for external HTTP/API access. Do not embed credentials in prompts or direct shell commands.`
+        : "Agent Proxy: unavailable for this run.",
       "",
       "Channel memory / notes:",
       memory || "(none)",

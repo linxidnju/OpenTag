@@ -88,6 +88,15 @@ export function createLocalConfig({ projectDir, runtime = "codex", appName = "Op
       requireApprovalForSlackPost: true,
       maxToolResultChars: 12000
     },
+    agentProxy: {
+      enabled: true,
+      allowAllHosts: false,
+      allowedHosts: [],
+      allowedMethods: ["GET", "POST"],
+      maxBodyBytes: 1000000,
+      maxResponseChars: 12000,
+      connections: []
+    },
     sessions: {
       maxContextMessages: 24,
       maxPromptChars: 60000,

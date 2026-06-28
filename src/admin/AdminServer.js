@@ -2,11 +2,12 @@ import http from "node:http";
 import { randomId } from "../utils/id.js";
 
 export class AdminServer {
-  constructor({ config, engine, store, runtimeRegistry, logger }) {
+  constructor({ config, engine, store, runtimeRegistry, agentProxy, logger }) {
     this.config = config;
     this.engine = engine;
     this.store = store;
     this.runtimeRegistry = runtimeRegistry;
+    this.agentProxy = agentProxy;
     this.logger = logger;
     this.server = null;
   }
@@ -26,7 +27,9 @@ export class AdminServer {
       this.server.listen(port, host, resolve);
     });
     const address = this.server.address();
-    this.logger?.info?.("OpenTag admin server started", { host, port: address?.port || port });
+    const actualPort = address?.port || port;
+    this.agentProxy?.setBaseUrl?.(`http://${host}:${actualPort}`);
+    this.logger?.info?.("OpenTag admin server started", { host, port: actualPort });
     return this.server;
   }
 
@@ -43,9 +46,14 @@ export class AdminServer {
   }
 
   async handle(req, res) {
-    if (!this.authorized(req)) return sendJson(res, 401, { ok: false, error: "unauthorized" });
     const url = new URL(req.url || "/", "http://opentag.local");
     const method = req.method || "GET";
+
+    if (method === "POST" && url.pathname === "/v1/proxy/http") {
+      return this.handleAgentProxyHttp(req, res);
+    }
+
+    if (!this.authorized(req)) return sendJson(res, 401, { ok: false, error: "unauthorized" });
 
     if (method === "GET" && url.pathname === "/healthz") {
       return sendJson(res, 200, { ok: true, app: this.config.app.name, time: new Date().toISOString() });
@@ -121,6 +129,13 @@ export class AdminServer {
     const header = req.headers.authorization || "";
     return header === `Bearer ${token}`;
   }
+
+  async handleAgentProxyHttp(req, res) {
+    if (!this.agentProxy) return sendJson(res, 404, { ok: false, error: "agent proxy is not configured" });
+    const token = bearerToken(req);
+    const result = await this.agentProxy.handleHttpRequest({ token, body: await readJson(req) });
+    return sendJson(res, result.status, result.body);
+  }
 }
 
 function sendJson(res, status, body) {
@@ -153,4 +168,9 @@ function createRecordingResponder() {
     fail: async (text) => events.push({ type: "fail", text }),
     sendApproval: async (approval) => events.push({ type: "approval", approval })
   };
+}
+
+function bearerToken(req) {
+  const header = String(req.headers.authorization || "");
+  return header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
 }

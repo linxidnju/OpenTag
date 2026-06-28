@@ -25,6 +25,15 @@
     "port": 8787,
     "requireToken": false
   },
+  "agentProxy": {
+    "enabled": true,
+    "allowAllHosts": false,
+    "allowedHosts": [],
+    "allowedMethods": ["GET", "POST"],
+    "maxBodyBytes": 1000000,
+    "maxResponseChars": 12000,
+    "connections": []
+  },
   "sandbox": {
     "rootDir": "~/.opentag/sandboxes",
     "workspaceRoot": ".",

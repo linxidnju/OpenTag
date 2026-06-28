@@ -5,7 +5,7 @@ import { redact } from "../utils/redact.js";
 import { isBotOrSystemMessage } from "../gateways/slack/SlackMessageMapper.js";
 
 export class OpenTagEngine {
-  constructor({ config, store, sandboxManager, runtimeRegistry, policyEngine, contextBuilder, sessionManager, slackFileManager, pinnedContextReader, workspaceSearchIndexer, slackWorkspaceSearcher, channelMemoryService, artifactUploader, logger }) {
+  constructor({ config, store, sandboxManager, runtimeRegistry, policyEngine, contextBuilder, sessionManager, slackFileManager, pinnedContextReader, workspaceSearchIndexer, slackWorkspaceSearcher, channelMemoryService, agentProxy, artifactUploader, logger }) {
     this.config = config;
     this.store = store;
     this.sandboxManager = sandboxManager;
@@ -18,6 +18,7 @@ export class OpenTagEngine {
     this.workspaceSearchIndexer = workspaceSearchIndexer;
     this.slackWorkspaceSearcher = slackWorkspaceSearcher;
     this.channelMemoryService = channelMemoryService;
+    this.agentProxy = agentProxy;
     this.artifactUploader = artifactUploader;
     this.logger = logger;
     this.queues = new Map();
@@ -311,7 +312,8 @@ export class OpenTagEngine {
     const adapter = this.runtimeRegistry.get(runtimeId);
     const sandbox = await this.sandboxManager.createSandbox({ sessionId: session.id, runtimeId, channelConfig });
     const preparedContext = await this.prepareRuntimeContext({ message, responder, sandbox, session, runtimeId });
-    message = { ...message, ...preparedContext, sandboxInputDir: sandbox.inputDir, sandboxOutputDir: sandbox.outputDir };
+    const proxyContext = this.agentProxy?.registerRunContext({ session, channelConfig, runtimeId });
+    message = { ...message, ...preparedContext, sandboxInputDir: sandbox.inputDir, sandboxOutputDir: sandbox.outputDir, agentProxy: proxyContext ? { url: proxyContext.url, enabled: true } : { enabled: false } };
     const prompt = await this.contextBuilder.build({ session, incomingMessage: message, channelConfig, runtimeId });
     const controller = new AbortController();
     this.abortControllers.set(session.id, controller);
@@ -335,7 +337,7 @@ export class OpenTagEngine {
     await this.store.appendAudit({ type: "runtime.started", sessionId: session.id, runtimeId, sandboxId: sandbox.id, approvedBy });
 
     try {
-      for await (const event of adapter.run({ prompt, message, session, sandbox, signal: controller.signal })) {
+      for await (const event of adapter.run({ prompt, message, session, sandbox, agentProxy: proxyContext, signal: controller.signal })) {
         if (event.type === "started") {
           await responder.sendStatus(event.message || `Runtime ${runtimeId} is running...`);
         } else if (event.type === "token") {
@@ -400,6 +402,7 @@ export class OpenTagEngine {
       await this.store.appendAudit({ type: "runtime.failed", sessionId: session.id, runtimeId, sandboxId: sandbox.id, error: messageText });
     } finally {
       this.abortControllers.delete(session.id);
+      this.agentProxy?.revokeRunContext(proxyContext?.token);
       await this.sandboxManager.cleanupSandbox(sandbox).catch((error) => this.logger.warn("sandbox.cleanup_failed", { sessionId: session.id, sandboxId: sandbox.id, error: error.message }));
     }
   }

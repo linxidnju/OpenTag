@@ -151,7 +151,9 @@ function resolveEnv(envSpec, input, runtimeId) {
     OPENTAG_SANDBOX_DIR: input.sandbox?.dir || "",
     OPENTAG_WORKSPACE_DIR: input.sandbox?.workspaceRoot || "",
     OPENTAG_INPUT_DIR: input.sandbox?.inputDir || "",
-    OPENTAG_OUTPUT_DIR: input.sandbox?.outputDir || ""
+    OPENTAG_OUTPUT_DIR: input.sandbox?.outputDir || "",
+    OPENTAG_AGENT_PROXY_URL: input.agentProxy?.url || process.env.OPENTAG_AGENT_PROXY_URL || "",
+    OPENTAG_AGENT_PROXY_TOKEN: input.agentProxy?.token || ""
   };
   for (const [key, value] of Object.entries(envSpec || {})) {
     resolved[key] = interpolate(String(value), input).replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)}/g, (_, name) => process.env[name] || "");

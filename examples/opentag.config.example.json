@@ -48,6 +48,18 @@
     "maxToolResultChars": 12000,
     "protocolVersion": "2025-03-26"
   },
+  "agentProxy": {
+    "enabled": true,
+    "allowAllHosts": false,
+    "allowedHosts": [],
+    "allowedMethods": [
+      "GET",
+      "POST"
+    ],
+    "maxBodyBytes": 1000000,
+    "maxResponseChars": 12000,
+    "connections": []
+  },
   "sessions": {
     "maxContextMessages": 24,
     "maxPromptChars": 60000,
