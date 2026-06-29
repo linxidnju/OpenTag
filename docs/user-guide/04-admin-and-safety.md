@@ -76,6 +76,20 @@ OpenTag treats runtimes as different trust levels:
 
 For local Codex, the generated runtime config uses workspace-write style execution. Review the bound project path and approval policy before inviting a large team to use it.
 
+Runtime child processes inherit a filtered environment by default. Variables whose names look like secrets, such as `SLACK_BOT_TOKEN`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, or `*_CREDENTIAL`, are not passed through automatically.
+
+If a runtime needs a credential, pass it explicitly in that runtime config:
+
+```json
+{
+  "env": {
+    "OPENAI_API_KEY": "${env:OPENAI_API_KEY}"
+  }
+}
+```
+
+Only pass runtime-specific credentials. Do not pass Slack bot tokens or the Admin API token to agent runtimes.
+
 ## Local Data
 
 OpenTag stores data under:
@@ -126,4 +140,3 @@ OPENTAG_ADMIN_TOKEN
 ```
 
 Do not paste secrets into Slack requests. Slack messages can become part of OpenTag context and local audit data.
-

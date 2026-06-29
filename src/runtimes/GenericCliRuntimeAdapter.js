@@ -49,7 +49,7 @@ export class GenericCliRuntimeAdapter {
 
     const child = spawn(command, args, {
       cwd,
-      env: resolveEnv(this.spec.env || {}, input, this.id),
+      env: resolveEnv(this.spec.env || {}, input, this.id, this.spec),
       shell: Boolean(this.spec.shell),
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -140,9 +140,9 @@ export function interpolate(template, input) {
     .replaceAll("{outputDir}", input.sandbox?.outputDir || "");
 }
 
-function resolveEnv(envSpec, input, runtimeId) {
+function resolveEnv(envSpec, input, runtimeId, spec = {}) {
   const resolved = {
-    ...process.env,
+    ...filteredProcessEnv(spec),
     OPENTAG_RUNTIME_ID: runtimeId,
     OPENTAG_SESSION_ID: input.session?.id || "",
     OPENTAG_THREAD_ID: input.session?.threadId || "",
@@ -153,10 +153,28 @@ function resolveEnv(envSpec, input, runtimeId) {
     OPENTAG_INPUT_DIR: input.sandbox?.inputDir || "",
     OPENTAG_OUTPUT_DIR: input.sandbox?.outputDir || "",
     OPENTAG_AGENT_PROXY_URL: input.agentProxy?.url || process.env.OPENTAG_AGENT_PROXY_URL || "",
-    OPENTAG_AGENT_PROXY_TOKEN: input.agentProxy?.token || ""
+      OPENTAG_AGENT_PROXY_TOKEN: input.agentProxy?.token || ""
   };
   for (const [key, value] of Object.entries(envSpec || {})) {
     resolved[key] = interpolate(String(value), input).replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)}/g, (_, name) => process.env[name] || "");
   }
   return resolved;
+}
+
+function filteredProcessEnv(spec = {}) {
+  if (spec.inheritEnv === false) return {};
+  const denyPatterns = (spec.denyEnvPatterns || [
+    ".*TOKEN.*",
+    ".*SECRET.*",
+    ".*KEY.*",
+    ".*PASSWORD.*",
+    ".*CREDENTIAL.*"
+  ]).map((pattern) => new RegExp(`^${pattern}$`, "i"));
+  const allowNames = new Set(spec.allowEnv || []);
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!allowNames.has(key) && denyPatterns.some((pattern) => pattern.test(key))) continue;
+    env[key] = value;
+  }
+  return env;
 }
