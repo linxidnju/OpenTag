@@ -1,10 +1,31 @@
-![OpenTag banner](docs/banner.png)
+<p align="center">
+  <img src="docs/banner.png" alt="OpenTag banner" width="100%" />
+</p>
 
-# OpenTag
+<h1 align="center">OpenTag</h1>
 
-> An open-source, channel-native agent gateway for teams.
+<p align="center">
+  <strong>Open-source, channel-native agent gateway for teams.</strong>
+</p>
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [User Guide](docs/user-guide/README.md) · [Security](SECURITY.md)
+<p align="center">
+  Bring AI agents into Slack threads with shared context, approvals, audit trails, and pluggable agent runtimes.
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="docs/user-guide/README.md">User Guide</a> ·
+  <a href="SECURITY.md">Security</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
+  <img alt="Node" src="https://img.shields.io/badge/node-%3E%3D20.11.0-339933">
+  <img alt="Slack first" src="https://img.shields.io/badge/channel-Slack--first-4A154B">
+  <img alt="Status" src="https://img.shields.io/badge/status-MVP-orange">
+</p>
 
 OpenTag brings AI agents into the place where team work already happens: Slack channels and threads.
 
@@ -12,7 +33,7 @@ Instead of running an agent from one person's terminal and pasting results back 
 
 ---
 
-## What You Can Do
+## ✨ What You Can Do
 
 - Ask an agent to investigate a bug from a Slack thread.
 - Let teammates add context before or during the agent run.
@@ -25,7 +46,7 @@ OpenTag is designed for team workflows where context, permission, and accountabi
 
 ---
 
-## How It Feels In Slack
+## 💬 How It Feels In Slack
 
 ```text
 @OpenTag summarize why this deployment failed
@@ -43,7 +64,7 @@ The agent replies in the same Slack thread, so the work stays connected to the o
 
 ---
 
-## Why OpenTag
+## 🚀 Why OpenTag
 
 Most AI coding and automation tools are built around a single local operator. OpenTag is built around shared channels.
 
@@ -55,7 +76,7 @@ Most AI coding and automation tools are built around a single local operator. Op
 
 ---
 
-## Quick Start
+## ⚡ Quick Start
 
 OpenTag requires Node.js `>=20.11.0`.
 
@@ -73,23 +94,27 @@ npm run start:console
 Start the Slack gateway with the example configuration:
 
 ```bash
-cp examples/env.example .env
-set -a
-source .env
-set +a
-npm run doctor
-npm start
+npm link
+opentag init --project . --runtime mock --open-slack
+$EDITOR ~/.opentag/.env
+opentag doctor --strict
+opentag daemon start
 ```
 
-For Slack setup, start with:
+Run this any time to see the next setup step:
+
+```bash
+opentag next
+```
+
+For detailed Slack setup, start with:
 
 - [`docs/user-guide/01-install.md`](docs/user-guide/01-install.md)
-- [`examples/env.example`](examples/env.example)
 - [`examples/slack-app-manifest.yaml`](examples/slack-app-manifest.yaml)
 
 ---
 
-## What Is Included
+## 📦 What Is Included
 
 - Slack gateway for mentions, thread replies, DMs, slash commands, and approvals.
 - Local console mode for trying OpenTag without Slack.
@@ -100,10 +125,10 @@ For Slack setup, start with:
 
 ---
 
-## User Guide
+## 📚 User Guide
 
 - [`docs/user-guide/README.md`](docs/user-guide/README.md) - guide index
-- [`docs/user-guide/01-install.md`](docs/user-guide/01-install.md) - install and Slack setup
+- [`docs/user-guide/01-install.md`](docs/user-guide/01-install.md) - install and visual Slack setup
 - [`docs/user-guide/02-use-in-slack.md`](docs/user-guide/02-use-in-slack.md) - day-to-day Slack usage
 - [`docs/user-guide/03-projects-and-runtimes.md`](docs/user-guide/03-projects-and-runtimes.md) - projects and runtime choices
 - [`docs/user-guide/04-admin-and-safety.md`](docs/user-guide/04-admin-and-safety.md) - approvals, safety, and operations
@@ -114,7 +139,7 @@ For implementation details, see [`docs/developer-guide.md`](docs/developer-guide
 
 ---
 
-## Safety Model
+## 🔐 Safety Model
 
 OpenTag is meant to make agent work visible and controllable in a team setting.
 
@@ -128,7 +153,7 @@ See [`SECURITY.md`](SECURITY.md) for security reporting and project security gui
 
 ---
 
-## Current Status
+## 🧭 Current Status
 
 OpenTag is an MVP for Slack-first team agent workflows. It is suitable for local trials, internal team experiments, and runtime integration work.
 
@@ -136,6 +161,6 @@ It is not yet a hosted production SaaS. Planned improvements include Slack OAuth
 
 ---
 
-## License
+## 📄 License
 
 Apache-2.0. See [`LICENSE`](LICENSE).

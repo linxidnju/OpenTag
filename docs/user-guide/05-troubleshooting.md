@@ -117,7 +117,7 @@ opentag project list
 Rebind the intended project:
 
 ```bash
-opentag setup --local --project /path/to/project --runtime codex
+opentag init --project /path/to/project --runtime codex
 opentag daemon restart
 ```
 

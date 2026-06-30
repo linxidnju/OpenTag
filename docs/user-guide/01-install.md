@@ -36,14 +36,14 @@ opentag help
 Bind OpenTag to the current project and select a runtime:
 
 ```bash
-opentag setup --local --project . --runtime codex --open-slack
+opentag init --project . --runtime codex --open-slack
 ```
 
 Use a different runtime if needed:
 
 ```bash
-opentag setup --local --project . --runtime opencode --open-slack
-opentag setup --local --project . --runtime mock --open-slack
+opentag init --project . --runtime opencode --open-slack
+opentag init --project . --runtime mock --open-slack
 ```
 
 Setup writes:
@@ -51,6 +51,7 @@ Setup writes:
 ```text
 ~/.opentag/config.json
 ~/.opentag/slack-app-manifest.yml
+~/.opentag/.env
 ~/.opentag/.env.example
 .opentag/project.json in the project directory
 ```
@@ -69,13 +70,31 @@ Open Slack app creation:
 opentag slack open
 ```
 
+In Slack, choose **Create from manifest**.
+
+<p align="center">
+  <img src="../pic/1createapp.png" alt="Create Slack app from manifest" width="100%" />
+</p>
+
 Create an app from a manifest and import:
 
 ```text
 ~/.opentag/slack-app-manifest.yml
 ```
 
+If Slack cannot read the local file directly, copy the file content into the manifest editor.
+
+<p align="center">
+  <img src="../pic/2manifest.png" alt="Import OpenTag Slack manifest" width="100%" />
+</p>
+
 The generated manifest is configured for Socket Mode, so local use does not require a public webhook URL.
+
+After reviewing the manifest, install the app to the target workspace.
+
+<p align="center">
+  <img src="../pic/3install.png" alt="Install Slack app to workspace" width="100%" />
+</p>
 
 ## Create Slack Tokens
 
@@ -89,15 +108,83 @@ SLACK_SIGNING_SECRET=...
 SLACK_USER_TOKEN=xoxp-...
 ```
 
-Copy the env example:
+Edit the generated env file:
 
 ```bash
-cp ~/.opentag/.env.example ~/.opentag/.env
 $EDITOR ~/.opentag/.env
 ```
 
 The `SLACK_APP_TOKEN` must be an app-level token with `connections:write`.
 `SLACK_USER_TOKEN` is optional; use it only if you enable Slack native workspace search with `workspaceSearch.slackSearchEnabled=true`.
+
+### Get `SLACK_APP_TOKEN`
+
+Path:
+
+```text
+Slack App page
+-> Basic Information
+-> App-Level Tokens
+-> Generate Token and Scopes
+```
+
+Use:
+
+```text
+Token Name: opentag-socket
+Scope: connections:write
+```
+
+<p align="center">
+  <img src="../pic/app_token.png" alt="Generate Slack app-level token" width="100%" />
+</p>
+
+Copy the generated `xapp-...` value into:
+
+```bash
+SLACK_APP_TOKEN=xapp-...
+```
+
+### Get `SLACK_BOT_TOKEN`
+
+Path:
+
+```text
+Slack App page
+-> OAuth & Permissions
+-> Install to Workspace
+-> Allow
+-> Bot User OAuth Token
+```
+
+Copy the `xoxb-...` value into:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-...
+```
+
+### Get `SLACK_SIGNING_SECRET`
+
+Path:
+
+```text
+Slack App page
+-> Basic Information
+-> App Credentials
+-> Signing Secret
+```
+
+<p align="center">
+  <img src="../pic/sign_secret.png" alt="Find Slack signing secret" width="100%" />
+</p>
+
+Copy the signing secret into:
+
+```bash
+SLACK_SIGNING_SECRET=...
+```
+
+Do not use the Verification Token shown by Slack. OpenTag needs the Signing Secret.
 
 ## Check the Install
 
@@ -120,6 +207,12 @@ opentag doctor --strict --offline --json
 ```
 
 When checks fail, `opentag doctor` prints a short `Next actions` list with the files or commands to fix first.
+
+To see the current shortest setup checklist at any time:
+
+```bash
+opentag next
+```
 
 You can also verify the Slack bot token:
 
@@ -152,6 +245,22 @@ Stop it:
 ```bash
 opentag daemon stop
 ```
+
+## Invite The Bot To A Channel
+
+After installation, find your OpenTag app in Slack and add it to the target channel.
+
+<p align="center">
+  <img src="../pic/5slack.png" alt="Invite OpenTag bot to a Slack channel" width="100%" />
+</p>
+
+In the channel, type:
+
+```text
+/invite @OpenTag
+```
+
+If your Slack App is not named `OpenTag`, use the bot name you configured.
 
 ## Keep the Daemon Running
 

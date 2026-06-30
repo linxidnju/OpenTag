@@ -7,7 +7,7 @@ OpenTag needs to know which local project a Slack request should use and which r
 The setup command binds a project:
 
 ```bash
-opentag setup --local --project . --runtime codex
+opentag init --project . --runtime codex
 ```
 
 List known projects:
@@ -137,4 +137,3 @@ Important fields:
 ```
 
 For real team use, replace `*` with the Slack `team_id` and channel ID.
-

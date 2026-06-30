@@ -127,7 +127,7 @@ function isPlaceholder(value) {
 function buildNextActions(checks, { offline, configPath }) {
   const byName = new Map(checks.map((item) => [item.name, item]));
   const actions = [];
-  if (!byName.get("config")?.pass) actions.push(`Run opentag setup --local --project . --runtime mock or pass --config ${configPath}`);
+  if (!byName.get("config")?.pass) actions.push(`Run opentag init --project . --runtime mock or pass --config ${configPath}`);
   if (!byName.get("config:parse")?.pass && byName.has("config:parse")) actions.push("Fix the OpenTag config parse error above.");
   if (!byName.get("env:file")?.pass) actions.push(`Copy ${envExamplePath()} to ${envPath()} and fill Slack tokens.`);
   if (!byName.get("manifest:file")?.pass) actions.push("Run opentag slack manifest to generate the Slack app manifest.");

@@ -5,6 +5,7 @@ import { runDaemon } from "./commands/daemon.mjs";
 import { runSlack } from "./commands/slack.mjs";
 import { runProject } from "./commands/project.mjs";
 import { runRuntime } from "./commands/runtime.mjs";
+import { runNext } from "./commands/next.mjs";
 import { parseArgs } from "./lib/args.mjs";
 import { defaultConfigPath } from "./lib/paths.mjs";
 import { loadLocalEnv } from "./lib/env.mjs";
@@ -19,8 +20,9 @@ export async function main(argv) {
     return;
   }
 
-  if (command === "setup") return runSetup(args);
+  if (command === "setup" || command === "init") return runSetup(args);
   if (command === "doctor") return runDoctor(args);
+  if (command === "next") return runNext(args);
   if (command === "daemon") return runDaemon(args);
   if (command === "slack") return runSlack(args);
   if (command === "project") return runProject(args);
@@ -38,7 +40,8 @@ function printHelp() {
   console.log(`OpenTag v0.1
 
 Usage:
-  opentag setup --local --project . --runtime codex [--open-slack]
+  opentag init --project . --runtime codex [--open-slack]
+  opentag next
   opentag doctor [--strict] [--offline] [--json]
   opentag daemon start|stop|restart|status|logs|install|uninstall
   opentag slack manifest [--write path]

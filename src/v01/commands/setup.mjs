@@ -1,7 +1,7 @@
 import path from "node:path";
 import { createLocalConfig, normalizeRuntimeId } from "../lib/configTemplate.mjs";
 import { commandExists, openUrl } from "../lib/commands.mjs";
-import { ensureDir, readJson, writeJson, writeText } from "../lib/fs.mjs";
+import { ensureDir, pathExists, readJson, writeJson, writeText } from "../lib/fs.mjs";
 import { defaultConfigPath, envExamplePath, envPath, expandHome, homeDir, manifestPath, projectBindingPath, projectsPath } from "../lib/paths.mjs";
 import { slackManifest, SLACK_MANIFEST_URL } from "../templates/slackManifest.mjs";
 
@@ -18,7 +18,9 @@ export async function runSetup(args) {
   await ensureDir(homeDir());
   await writeJson(configPath, config);
   await writeText(manifestPath(), slackManifest({ appName, slashCommand: config.slack.slashCommand }));
-  await writeText(envExamplePath(), localEnvExample(config));
+  const envContent = localEnvExample(config);
+  await writeText(envExamplePath(), envContent);
+  if (!(await pathExists(envPath()))) await writeText(envPath(), envContent);
   await writeText(path.join(process.cwd(), "examples", "slack-app-manifest.generated.yml"), slackManifest({ appName, slashCommand: config.slack.slashCommand }));
   const project = {
     name: path.basename(projectDir),
@@ -30,7 +32,7 @@ export async function runSetup(args) {
   await writeJson(projectBindingPath(projectDir), project);
   await upsertProject(project);
 
-  console.log(`OpenTag v0.1 local setup complete.
+  console.log(`OpenTag local init complete.
 
 Config:   ${configPath}
 Manifest: ${manifestPath()}
@@ -40,9 +42,11 @@ Runtime:  ${runtime}
 
 Next:
   1. Import the Slack manifest from ${manifestPath()}
-  2. Copy ${envExamplePath()} to ${envPath()} and fill Slack tokens
+  2. Fill Slack tokens in ${envPath()}
   3. Run: opentag doctor --strict
   4. Run: opentag daemon start
+
+Tip: run "opentag next" any time to see the next setup step.
 `);
 
   if (args["open-slack"]) openUrl(SLACK_MANIFEST_URL);

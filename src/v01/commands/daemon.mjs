@@ -42,6 +42,16 @@ async function startDaemon(args) {
   closeSync(out);
   child.unref();
   await writeText(pidPath(), `${child.pid}\n`);
+  const startup = await waitForStartup(child.pid, child, 1200);
+  if (!startup.ok) {
+    await removeFile(pidPath());
+    const tail = await readLogTail(30);
+    throw new Error([
+      `OpenTag daemon failed to start: ${startup.reason}`,
+      `Logs: ${logPath()}`,
+      tail ? `Recent log:\n${tail}` : null
+    ].filter(Boolean).join("\n"));
+  }
   console.log(`OpenTag daemon started: pid ${child.pid}`);
   console.log(`Logs: ${logPath()}`);
 }
@@ -176,4 +186,21 @@ async function waitForExit(pid, timeoutMs) {
     if (!isRunning(pid)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+}
+
+async function waitForStartup(pid, child, timeoutMs) {
+  let exit = null;
+  child.once("exit", (code, signal) => {
+    exit = { code, signal };
+  });
+  await new Promise((resolve) => setTimeout(resolve, timeoutMs));
+  if (exit) return { ok: false, reason: `process exited with code=${exit.code} signal=${exit.signal || "none"}` };
+  if (!isRunning(pid)) return { ok: false, reason: "process is not running" };
+  return { ok: true };
+}
+
+async function readLogTail(lines) {
+  if (!(await pathExists(logPath()))) return "";
+  const content = await readFile(logPath(), "utf8").catch(() => "");
+  return content.split(/\r?\n/).slice(-lines).join("\n").trim();
 }
