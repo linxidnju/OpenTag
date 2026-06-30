@@ -71,6 +71,7 @@ export class SandboxManager {
         sessionId,
         runId: sandbox.id,
         runtimeId,
+        type: inferArtifactType(relativePath),
         path: filePath,
         relativePath,
         size: info.size,
@@ -140,6 +141,18 @@ function globToRegExp(pattern) {
 function isSubpathOrEqual(target, root) {
   const relative = path.relative(root, target);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function inferArtifactType(relativePath) {
+  const ext = path.extname(relativePath).toLowerCase();
+  if ([".patch", ".diff"].includes(ext)) return "patch";
+  if ([".md", ".txt", ".log"].includes(ext)) return "report";
+  if (ext === ".json") return "json";
+  if (ext === ".csv") return "data";
+  if ([".png", ".jpg", ".jpeg", ".svg"].includes(ext)) return "image";
+  if (ext === ".pdf") return "pdf";
+  if (ext === ".html") return "html";
+  return "file";
 }
 
 function safeName(value) {

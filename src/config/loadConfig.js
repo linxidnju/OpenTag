@@ -243,6 +243,11 @@ export function validateConfig(config) {
           throw new Error(`channel ${channel.channelId} allowedRuntimes references missing runtime ${runtimeId}`);
         }
       }
+      for (const runtimeId of channel.runtimeFallbacks || []) {
+        if (!config.runtimes.adapters[runtimeId]) {
+          throw new Error(`channel ${channel.channelId} runtimeFallbacks references missing runtime ${runtimeId}`);
+        }
+      }
       assertArray(channel.allowedUsers || [], `channel ${channel.channelId}.allowedUsers`);
       assertArray(channel.blockedUsers || [], `channel ${channel.channelId}.blockedUsers`);
       assertArray(channel.approvers || [], `channel ${channel.channelId}.approvers`);

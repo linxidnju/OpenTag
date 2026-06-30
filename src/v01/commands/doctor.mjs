@@ -1,7 +1,7 @@
 import path from "node:path";
 import { loadConfig } from "../../config/loadConfig.js";
 import { commandExists, runCommand } from "../lib/commands.mjs";
-import { defaultConfigPath, envPath, expandHome } from "../lib/paths.mjs";
+import { defaultConfigPath, envExamplePath, envPath, expandHome, manifestPath } from "../lib/paths.mjs";
 import { pathExists } from "../lib/fs.mjs";
 
 export async function runDoctor(args) {
@@ -12,6 +12,8 @@ export async function runDoctor(args) {
 
   checks.push(check("node", nodeOk(), process.version));
   checks.push(check("env:file", await pathExists(envPath()), envPath(), { required: false }));
+  checks.push(check("env:example", await pathExists(envExamplePath()), envExamplePath(), { required: false }));
+  checks.push(check("manifest:file", await pathExists(manifestPath()), manifestPath(), { required: false }));
   checks.push(check("config", await pathExists(configPath), configPath));
 
   let config = null;
@@ -66,9 +68,24 @@ export async function runDoctor(args) {
   let ok = true;
   for (const item of checks) {
     if (!item.pass && item.required) ok = false;
+  }
+  const nextActions = buildNextActions(checks, { offline, configPath });
+
+  if (args.json) {
+    console.log(JSON.stringify({ ok, strict, offline, configPath, checks, nextActions }, null, 2));
+    if (strict && !ok) process.exitCode = 1;
+    return;
+  }
+
+  for (const item of checks) {
     const marker = item.pass ? "✓" : item.required ? "✗" : "!";
     const optional = item.required ? "" : " optional";
     console.log(`${marker} ${item.name.padEnd(22)} ${item.detail}${optional}`);
+  }
+
+  if (nextActions.length) {
+    console.log("\nNext actions:");
+    for (const action of nextActions) console.log(`- ${action}`);
   }
 
   if (strict && !ok) {
@@ -105,4 +122,23 @@ function defaultCommandFor(type) {
 
 function isPlaceholder(value) {
   return /your-|change-me|placeholder|^xoxb-your|^xapp-your/i.test(String(value || ""));
+}
+
+function buildNextActions(checks, { offline, configPath }) {
+  const byName = new Map(checks.map((item) => [item.name, item]));
+  const actions = [];
+  if (!byName.get("config")?.pass) actions.push(`Run opentag setup --local --project . --runtime mock or pass --config ${configPath}`);
+  if (!byName.get("config:parse")?.pass && byName.has("config:parse")) actions.push("Fix the OpenTag config parse error above.");
+  if (!byName.get("env:file")?.pass) actions.push(`Copy ${envExamplePath()} to ${envPath()} and fill Slack tokens.`);
+  if (!byName.get("manifest:file")?.pass) actions.push("Run opentag slack manifest to generate the Slack app manifest.");
+  if (!offline) {
+    for (const name of ["slack:bot", "slack:app", "slack:signing"]) {
+      const item = byName.get(name);
+      if (item && !item.pass && item.required) actions.push(`Set ${item.detail.split("=")[0]} in ${envPath()}.`);
+    }
+  }
+  for (const item of checks) {
+    if (item.name.startsWith("runtime:") && !item.pass && item.required) actions.push(`Install or configure required runtime command: ${item.detail}.`);
+  }
+  return [...new Set(actions)];
 }

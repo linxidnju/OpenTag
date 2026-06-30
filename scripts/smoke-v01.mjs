@@ -11,6 +11,10 @@ const env = { ...process.env, OPENTAG_HOME: path.join(tmp, "home") };
 try {
   run(["./bin/opentag.mjs", "setup", "--local", "--project", repo, "--runtime", "mock"], { env });
   run(["./bin/opentag.mjs", "doctor", "--strict", "--offline"], { env });
+  const doctorJson = run(["./bin/opentag.mjs", "doctor", "--strict", "--offline", "--json"], { env });
+  const doctor = JSON.parse(doctorJson.stdout);
+  if (!doctor.ok) throw new Error("doctor --json reported not ok");
+  if (!Array.isArray(doctor.checks) || !doctor.checks.some((item) => item.name === "manifest:file")) throw new Error("doctor --json missing manifest:file check");
   run(["./bin/opentag.mjs", "slack", "manifest", "--write", path.join(tmp, "manifest.yml")], { env });
   const projectList = run(["./bin/opentag.mjs", "project", "list"], { env });
   if (!projectList.stdout.includes(repo)) throw new Error("project list did not include setup project");

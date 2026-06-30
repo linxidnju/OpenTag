@@ -77,13 +77,27 @@ export async function main(argv) {
 
   if (command === "runs") {
     const runs = await app.store.listRuns({ sessionId: args.session, limit: Number(args.limit || args.n || 20) });
-    printTable(runs.map((r) => ({ id: r.id, status: r.status, runtime: r.runtimeId, session: r.sessionId, artifacts: r.artifactCount ?? "", updated: r.updatedAt })));
+    printTable(runs.map((r) => ({ id: r.id, status: r.status, runtime: r.runtimeId, task: r.taskId || "", session: r.sessionId, artifacts: r.artifactCount ?? "", updated: r.updatedAt })));
+    return;
+  }
+
+  if (command === "runtime-events") {
+    const runId = args.run || args._[1];
+    if (!runId) throw new Error("Usage: opentag runtime-events <run_id>");
+    const events = await app.store.listRuntimeEvents({ runId, limit: Number(args.limit || args.n || 100) });
+    for (const event of events) console.log(JSON.stringify(event));
     return;
   }
 
   if (command === "artifacts") {
     const artifacts = await app.store.listArtifacts({ sessionId: args.session, runId: args.run, limit: Number(args.limit || args.n || 20) });
-    printTable(artifacts.map((a) => ({ id: a.id, run: a.runId, session: a.sessionId, path: a.relativePath || a.path, size: a.size ?? "" })));
+    printTable(artifacts.map((a) => ({ id: a.id, type: a.type || "", run: a.runId, session: a.sessionId, path: a.relativePath || a.path, size: a.size ?? "" })));
+    return;
+  }
+
+  if (command === "pr-candidates") {
+    const candidates = await app.store.listPullRequestCandidates({ sessionId: args.session, runId: args.run, status: args.status, limit: Number(args.limit || args.n || 20) });
+    printTable(candidates.map((c) => ({ id: c.id, status: c.status, run: c.runId, session: c.sessionId, title: c.title, patches: (c.patchPaths || []).join(", ") })));
     return;
   }
 
@@ -125,7 +139,30 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`OpenTag MVP\n\nUsage:\n  opentag start --config ./examples/opentag.config.example.json [--gateway slack|console]\n  opentag doctor --config ./examples/opentag.config.example.json\n  opentag run --config ./examples/opentag.config.example.json --runtime mock --prompt "Explain this repo"\n  opentag sessions --config ./examples/opentag.config.example.json [--status active] [--limit 20]\n  opentag approvals --config ./examples/opentag.config.example.json [--status pending]\n  opentag audit --config ./examples/opentag.config.example.json [--session sess_x] [--limit 50]\n  opentag cancel --config ./examples/opentag.config.example.json <session_id>\n  opentag cleanup --config ./examples/opentag.config.example.json --retentionHours 24\n  opentag admin --config ./examples/opentag.config.example.json\n  opentag mcp --config ./examples/opentag.config.example.json\n\nEnvironment for Slack Socket Mode:\n  SLACK_BOT_TOKEN=xoxb-...\n  SLACK_APP_TOKEN=xapp-...\n`);
+  console.log([
+    "OpenTag MVP",
+    "",
+    "Usage:",
+    "  opentag start --config ./examples/opentag.config.example.json [--gateway slack|console]",
+    "  opentag doctor --config ./examples/opentag.config.example.json",
+    "  opentag run --config ./examples/opentag.config.example.json --runtime mock --prompt \"Explain this repo\"",
+    "  opentag sessions --config ./examples/opentag.config.example.json [--status active] [--limit 20]",
+    "  opentag approvals --config ./examples/opentag.config.example.json [--status pending]",
+    "  opentag audit --config ./examples/opentag.config.example.json [--session sess_x] [--limit 50]",
+    "  opentag runs --config ./examples/opentag.config.example.json [--session sess_x]",
+    "  opentag runtime-events --config ./examples/opentag.config.example.json <run_id>",
+    "  opentag artifacts --config ./examples/opentag.config.example.json [--run run_x]",
+    "  opentag pr-candidates --config ./examples/opentag.config.example.json [--run run_x]",
+    "  opentag cancel --config ./examples/opentag.config.example.json <session_id>",
+    "  opentag cleanup --config ./examples/opentag.config.example.json --retentionHours 24",
+    "  opentag admin --config ./examples/opentag.config.example.json",
+    "  opentag mcp --config ./examples/opentag.config.example.json",
+    "",
+    "Environment for Slack Socket Mode:",
+    "  SLACK_BOT_TOKEN=xoxb-...",
+    "  SLACK_APP_TOKEN=xapp-...",
+    ""
+  ].join("\n"));
 }
 
 async function doctor(config, logger) {

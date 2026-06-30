@@ -1,6 +1,7 @@
 import { FileStore } from "./storage/FileStore.js";
 import { SandboxManager } from "./sandbox/SandboxManager.js";
 import { RuntimeRegistry } from "./core/RuntimeRegistry.js";
+import { TaskRouter } from "./core/TaskRouter.js";
 import { PolicyEngine } from "./core/PolicyEngine.js";
 import { ContextBuilder } from "./core/ContextBuilder.js";
 import { SessionManager } from "./core/SessionManager.js";
@@ -30,6 +31,7 @@ export async function buildOpenTag(config, options = {}) {
   await sandboxManager.init();
 
   const runtimeRegistry = new RuntimeRegistry({ config: config.runtimes, logger });
+  const taskRouter = new TaskRouter({ config, runtimeRegistry, logger });
   const policyEngine = new PolicyEngine({ config, logger });
   const slackFileManager = new SlackFileManager({ config, logger });
   const pinnedContextReader = new SlackPinnedContextReader({ config, logger });
@@ -46,6 +48,7 @@ export async function buildOpenTag(config, options = {}) {
     store,
     sandboxManager,
     runtimeRegistry,
+    taskRouter,
     policyEngine,
     contextBuilder,
     sessionManager,
@@ -73,6 +76,7 @@ export async function buildOpenTag(config, options = {}) {
     store,
     sandboxManager,
     runtimeRegistry,
+    taskRouter,
     policyEngine,
     slackFileManager,
     pinnedContextReader,

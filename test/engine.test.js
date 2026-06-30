@@ -151,6 +151,50 @@ test("engine records run metadata and collects sandbox artifacts", async () => {
     assert.equal(runs[0].status, "completed");
     assert.equal(artifacts.length, 1);
     assert.equal(artifacts[0].relativePath, "result.md");
+    assert.equal(artifacts[0].type, "report");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("engine creates pull request candidate for patch artifacts", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "opentag-pr-candidate-"));
+  const config = {
+    app: { name: "OpenTag", dataDir: path.join(dir, "data"), logLevel: "silent" },
+    gateway: "console",
+    slack: { mode: "socket", processThreadReplies: true, streamUpdateMs: 1, maxMessageChars: 35000 },
+    sessions: { maxContextMessages: 8, idleTtlHours: 72 },
+    sandbox: { rootDir: path.join(dir, "sandboxes"), mode: "ephemeral", cleanupOnComplete: false, retentionHours: 24, collectArtifacts: true, artifactInclude: ["*.patch"] },
+    security: { redactSecrets: true, defaultDenyPatterns: [], defaultApprovalPatterns: [] },
+    workspaces: [{ workspaceId: "*", channels: [{ channelId: "*", name: "default", defaultRuntime: "patcher", allowedRuntimes: ["patcher"], allowedUsers: [], approvers: [], policy: { requireApprovalForWriteAccess: false, requireApprovalPatterns: [], denyPatterns: [] } }] }],
+    runtimes: {
+      default: "patcher",
+      adapters: {
+        patcher: {
+          type: "generic-cli",
+          command: process.execPath,
+          args: ["-e", "require('fs').writeFileSync('fix.patch', 'diff --git a/a b/a\\n'); process.stdout.write('patch ready')"],
+          outputMode: "text",
+          requiresApproval: false,
+          timeoutMs: 5000
+        }
+      }
+    }
+  };
+  const app = await buildOpenTag(config, { logger: createLogger({ level: "silent" }) });
+  try {
+    const r = recorder();
+    await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", threadId: "patch", messageId: "1", userId: "U1", text: "create patch", cleanText: "create patch", isMention: true, raw: {} }, r);
+    const sessions = await app.store.listSessions();
+    const runs = await app.store.listRuns({ sessionId: sessions[0].id });
+    const artifacts = await app.store.listArtifacts({ sessionId: sessions[0].id });
+    const candidates = await app.store.listPullRequestCandidates({ sessionId: sessions[0].id });
+    assert.equal(artifacts.length, 1);
+    assert.equal(artifacts[0].type, "patch");
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].runId, runs[0].id);
+    assert.deepEqual(candidates[0].artifactIds, [artifacts[0].id]);
+    assert.ok(r.events.some((event) => event[0] === "text" && event[1].includes("Pull request candidate")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

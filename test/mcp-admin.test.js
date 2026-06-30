@@ -77,9 +77,16 @@ test("Admin API exposes health and sessions", async () => {
     const runs = await fetch(app.adminServer.url("/v1/runs")).then((res) => res.json());
     assert.equal(runs.ok, true);
     assert.equal(runs.runs.length, 1);
+    const runtimeEvents = await fetch(app.adminServer.url(`/v1/runs/${runs.runs[0].id}/events`)).then((res) => res.json());
+    assert.equal(runtimeEvents.ok, true);
+    assert.equal(runtimeEvents.runId, runs.runs[0].id);
+    assert.ok(runtimeEvents.events.some((event) => event.type === "completed"));
     const artifacts = await fetch(app.adminServer.url("/v1/artifacts")).then((res) => res.json());
     assert.equal(artifacts.ok, true);
     assert.ok(Array.isArray(artifacts.artifacts));
+    const candidates = await fetch(app.adminServer.url("/v1/pr-candidates")).then((res) => res.json());
+    assert.equal(candidates.ok, true);
+    assert.ok(Array.isArray(candidates.candidates));
   } finally {
     await app.adminServer.stop().catch(() => {});
     await rm(dir, { recursive: true, force: true });

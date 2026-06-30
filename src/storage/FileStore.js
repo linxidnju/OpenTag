@@ -14,7 +14,9 @@ export class FileStore {
     this.approvalsDir = path.join(this.rootDir, "approvals");
     this.eventsDir = path.join(this.rootDir, "events");
     this.runsDir = path.join(this.rootDir, "runs");
+    this.runtimeEventsDir = path.join(this.rootDir, "runtime-events");
     this.artifactsDir = path.join(this.rootDir, "artifacts");
+    this.prCandidatesDir = path.join(this.rootDir, "pr-candidates");
     this.threadIndexDir = path.join(this.rootDir, "thread-index");
     this.channelReportsDir = path.join(this.rootDir, "channel-reports");
     this.workspaceIndexDir = path.join(this.rootDir, "workspace-index");
@@ -29,7 +31,9 @@ export class FileStore {
     await ensureDir(this.approvalsDir);
     await ensureDir(this.eventsDir);
     await ensureDir(this.runsDir);
+    await ensureDir(this.runtimeEventsDir);
     await ensureDir(this.artifactsDir);
+    await ensureDir(this.prCandidatesDir);
     await ensureDir(this.threadIndexDir);
     await ensureDir(this.channelReportsDir);
     await ensureDir(this.workspaceIndexDir);
@@ -56,8 +60,16 @@ export class FileStore {
     return path.join(this.runsDir, `${safeName(runId)}.json`);
   }
 
+  runtimeEventsPath(runId) {
+    return path.join(this.runtimeEventsDir, `${safeName(runId)}.ndjson`);
+  }
+
   artifactPath(artifactId) {
     return path.join(this.artifactsDir, `${safeName(artifactId)}.json`);
+  }
+
+  prCandidatePath(candidateId) {
+    return path.join(this.prCandidatesDir, `${safeName(candidateId)}.json`);
   }
 
   threadIndexPath(channelId) {
@@ -240,6 +252,19 @@ export class FileStore {
     return limit ? out.slice(0, limit) : out;
   }
 
+  async appendRuntimeEvent(runId, event) {
+    const record = { ...event, runId, createdAt: event.createdAt || nowIso() };
+    await appendNdjson(this.runtimeEventsPath(runId), record);
+    return record;
+  }
+
+  async listRuntimeEvents({ runId, limit = null } = {}) {
+    if (!runId) throw new Error("listRuntimeEvents requires runId");
+    const events = await readNdjson(this.runtimeEventsPath(runId));
+    if (!limit || events.length <= limit) return events;
+    return events.slice(events.length - limit);
+  }
+
   async createArtifact(artifact) {
     const record = { ...artifact, createdAt: artifact.createdAt || nowIso(), updatedAt: nowIso() };
     await atomicWriteJson(this.artifactPath(record.id), record);
@@ -260,6 +285,38 @@ export class FileStore {
       if (sessionId && artifact.sessionId !== sessionId) continue;
       if (runId && artifact.runId !== runId) continue;
       out.push(artifact);
+    }
+    out.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  async createPullRequestCandidate(candidate) {
+    const record = {
+      id: candidate.id || randomId("prc"),
+      status: candidate.status || "candidate",
+      ...candidate,
+      createdAt: candidate.createdAt || nowIso(),
+      updatedAt: nowIso()
+    };
+    await atomicWriteJson(this.prCandidatePath(record.id), record);
+    return record;
+  }
+
+  async getPullRequestCandidate(candidateId) {
+    return readJsonIfExists(this.prCandidatePath(candidateId), null);
+  }
+
+  async listPullRequestCandidates({ sessionId = null, runId = null, status = null, limit = null } = {}) {
+    const names = await readdir(this.prCandidatesDir).catch(() => []);
+    const out = [];
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const candidate = await readJsonIfExists(path.join(this.prCandidatesDir, name), null);
+      if (!candidate) continue;
+      if (sessionId && candidate.sessionId !== sessionId) continue;
+      if (runId && candidate.runId !== runId) continue;
+      if (status && candidate.status !== status) continue;
+      out.push(candidate);
     }
     out.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
     return limit ? out.slice(0, limit) : out;

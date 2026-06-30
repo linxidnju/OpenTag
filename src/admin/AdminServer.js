@@ -96,9 +96,19 @@ export class AdminServer {
       const runs = await this.store.listRuns({ limit: numberParam(url, "limit", 100), sessionId: url.searchParams.get("sessionId") || undefined });
       return sendJson(res, 200, { ok: true, runs });
     }
+    const runEventsMatch = url.pathname.match(/^\/v1\/runs\/([^/]+)\/events$/);
+    if (method === "GET" && runEventsMatch) {
+      const runId = decodeURIComponent(runEventsMatch[1]);
+      const events = await this.store.listRuntimeEvents({ runId, limit: numberParam(url, "limit", 500) });
+      return sendJson(res, 200, { ok: true, runId, events });
+    }
     if (method === "GET" && url.pathname === "/v1/artifacts") {
       const artifacts = await this.store.listArtifacts({ limit: numberParam(url, "limit", 100), sessionId: url.searchParams.get("sessionId") || undefined, runId: url.searchParams.get("runId") || undefined });
       return sendJson(res, 200, { ok: true, artifacts });
+    }
+    if (method === "GET" && url.pathname === "/v1/pr-candidates") {
+      const candidates = await this.store.listPullRequestCandidates({ limit: numberParam(url, "limit", 100), sessionId: url.searchParams.get("sessionId") || undefined, runId: url.searchParams.get("runId") || undefined, status: url.searchParams.get("status") || undefined });
+      return sendJson(res, 200, { ok: true, candidates });
     }
     if (method === "POST" && url.pathname === "/v1/run") {
       const body = await readJson(req);

@@ -20,6 +20,14 @@ If Slack tokens are not ready yet:
 opentag doctor --strict --offline
 ```
 
+For machine-readable diagnostics:
+
+```bash
+opentag doctor --strict --offline --json
+```
+
+Use the `Next actions` section from plain doctor output as the shortest recovery checklist.
+
 ## The CLI Is Not Found
 
 Run from the repository:
@@ -160,4 +168,3 @@ ls ~/.opentag
 ```
 
 Only remove files when you are sure you do not need the local sessions, audit logs, config, or project bindings.
-

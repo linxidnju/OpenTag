@@ -108,6 +108,9 @@
           "channelId": "*",
           "name": "default",
           "defaultRuntime": "mock",
+          "runtimeFallbacks": [
+            "codex-workspace-write"
+          ],
           "allowedRuntimes": [
             "mock",
             "claude-code-readonly",
@@ -181,6 +184,12 @@
     "adapters": {
       "mock": {
         "type": "mock",
+        "capabilities": {
+          "readOnly": true
+        },
+        "cost": {
+          "estimatedUsd": 0
+        },
         "delayMs": 5
       },
       "claude-code-readonly": {
@@ -193,6 +202,15 @@
           "Grep",
           "LS"
         ],
+        "capabilities": {
+          "readOnly": true,
+          "tools": [
+            "file_read"
+          ]
+        },
+        "cost": {
+          "estimatedUsd": 0.05
+        },
         "permissionMode": "default",
         "timeoutMs": 600000
       },
@@ -210,6 +228,15 @@
           "Write",
           "Bash"
         ],
+        "capabilities": {
+          "tools": [
+            "shell",
+            "file_write"
+          ]
+        },
+        "cost": {
+          "estimatedUsd": 0.1
+        },
         "permissionMode": "acceptEdits",
         "requiresApproval": true,
         "timeoutMs": 900000
@@ -218,6 +245,16 @@
         "type": "codex",
         "command": "codex",
         "sandbox": "read-only",
+        "capabilities": {
+          "readOnly": true,
+          "tools": [
+            "shell",
+            "network"
+          ]
+        },
+        "cost": {
+          "estimatedUsd": 0.05
+        },
         "json": true,
         "ephemeral": true,
         "timeoutMs": 600000
@@ -226,6 +263,16 @@
         "type": "codex",
         "command": "codex",
         "sandbox": "workspace-write",
+        "capabilities": {
+          "tools": [
+            "shell",
+            "file_write",
+            "network"
+          ]
+        },
+        "cost": {
+          "estimatedUsd": 0.15
+        },
         "json": true,
         "ephemeral": true,
         "requiresApproval": true,
@@ -240,6 +287,9 @@
       "docker-node-readonly": {
         "type": "docker",
         "image": "node:22-alpine",
+        "capabilities": {
+          "readOnly": true
+        },
         "args": [
           "node",
           "-e",

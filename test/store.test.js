@@ -58,6 +58,24 @@ test("FileStore lists runs and artifacts", async () => {
   });
 });
 
+test("FileStore persists pull request candidates", async () => {
+  await withStore(async (store) => {
+    const candidate = await store.createPullRequestCandidate({
+      sessionId: "sess_1",
+      runId: "run_1",
+      runtimeId: "codex",
+      title: "OpenTag patch",
+      artifactIds: ["art_1"],
+      patchPaths: ["outputs/fix.patch"]
+    });
+    assert.ok(candidate.id.startsWith("prc_"));
+    assert.equal((await store.getPullRequestCandidate(candidate.id)).title, "OpenTag patch");
+    const byRun = await store.listPullRequestCandidates({ runId: "run_1" });
+    assert.equal(byRun.length, 1);
+    assert.equal(byRun[0].status, "candidate");
+  });
+});
+
 test("FileStore persists channel reports by thread", async () => {
   await withStore(async (store) => {
     await store.saveChannelReport({ id: "report_1", channelId: "C1", threadTs: "100.1", topic: "launch", counts: { open: 1 } });

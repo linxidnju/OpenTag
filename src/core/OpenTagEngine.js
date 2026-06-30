@@ -3,13 +3,17 @@ import { randomId } from "../utils/id.js";
 import { nowIso, hoursFromNow } from "../utils/time.js";
 import { redact } from "../utils/redact.js";
 import { isBotOrSystemMessage } from "../gateways/slack/SlackMessageMapper.js";
+import { createTask } from "./Task.js";
+import { normalizeRuntimeEvent } from "./RuntimeEvent.js";
+import { buildPullRequestCandidate } from "../artifacts/PullRequestCandidateBuilder.js";
 
 export class OpenTagEngine {
-  constructor({ config, store, sandboxManager, runtimeRegistry, policyEngine, contextBuilder, sessionManager, slackFileManager, pinnedContextReader, workspaceSearchIndexer, slackWorkspaceSearcher, channelMemoryService, agentProxy, artifactUploader, logger }) {
+  constructor({ config, store, sandboxManager, runtimeRegistry, taskRouter, policyEngine, contextBuilder, sessionManager, slackFileManager, pinnedContextReader, workspaceSearchIndexer, slackWorkspaceSearcher, channelMemoryService, agentProxy, artifactUploader, logger }) {
     this.config = config;
     this.store = store;
     this.sandboxManager = sandboxManager;
     this.runtimeRegistry = runtimeRegistry;
+    this.taskRouter = taskRouter;
     this.policyEngine = policyEngine;
     this.contextBuilder = contextBuilder;
     this.sessionManager = sessionManager;
@@ -28,16 +32,16 @@ export class OpenTagEngine {
   async handleIncomingMessage(message, responder) {
     const { channel } = resolveChannelConfig(this.config, message);
     const runtimeOverride = parseRuntimeOverride(message.cleanText || message.text || "");
-    const runtimeId = runtimeOverride.runtimeId || channel.defaultRuntime || this.config.runtimes.default;
     const cleanText = runtimeOverride.text || message.cleanText || message.text || "";
 
-    let runtimeSpec;
+    let route;
     try {
-      runtimeSpec = this.runtimeRegistry.getSpec(runtimeId);
+      route = this.taskRouter.route({ message: { ...message, cleanText }, channelConfig: channel, runtimeOverride: runtimeOverride.runtimeId });
     } catch (error) {
-      await responder.fail(`Unknown runtime \`${runtimeId}\`: ${error.message}`);
+      await responder.fail(error.message);
       return;
     }
+    const { runtimeId, runtimeSpec } = route;
 
     const session = await this.sessionManager.getOrCreateSession({
       platform: message.platform,
@@ -47,6 +51,10 @@ export class OpenTagEngine {
       runtimeId,
       createdBy: message.userId
     });
+    const task = createTask({ message: { ...message, cleanText }, session, runtimeId, runtimeSpec, channelConfig: channel });
+    task.route = { reason: route.reason, denied: route.denied || [] };
+    task.taskClass = route.taskClass || "general";
+    task.requiredCapabilities = route.requiredCapabilities || {};
 
     const command = parseOpenTagCommand(cleanText);
     if (command) return this.handleCommand({ command, session, message: { ...message, cleanText }, responder, channel });
@@ -64,10 +72,11 @@ export class OpenTagEngine {
       platform: message.platform
     });
 
-    await this.store.appendAudit({ type: "message.received", sessionId: session.id, runtimeId, userId: message.userId, messageId: message.messageId, isMention: message.isMention });
+    await this.store.appendAudit({ type: "task.created", taskId: task.id, sessionId: session.id, runtimeId, routeReason: route.reason, taskClass: task.taskClass, requiredCapabilities: task.requiredCapabilities, userId: message.userId, messageId: message.messageId, source: task.source });
+    await this.store.appendAudit({ type: "message.received", taskId: task.id, sessionId: session.id, runtimeId, userId: message.userId, messageId: message.messageId, isMention: message.isMention });
 
     return this.enqueue(session.id, async () => {
-      await this.processTurn({ sessionId: session.id, message: { ...message, cleanText }, responder, runtimeId, runtimeSpec, channelConfig: channel });
+      await this.processTurn({ sessionId: session.id, task, message: { ...message, cleanText }, responder, runtimeId, runtimeSpec, channelConfig: channel });
     }, responder);
   }
 
@@ -195,13 +204,14 @@ export class OpenTagEngine {
     return responder.sendText(`Unknown OpenTag slash command: ${command.name}`);
   }
 
-  async processTurn({ sessionId, message, responder, runtimeId, runtimeSpec = null, channelConfig, approvedBy = null }) {
+  async processTurn({ sessionId, task = null, message, responder, runtimeId, runtimeSpec = null, channelConfig, approvedBy = null }) {
     let session = await this.store.getSession(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
     runtimeSpec = runtimeSpec || this.runtimeRegistry.getSpec(runtimeId);
+    task = task || createTask({ message, session, runtimeId, runtimeSpec, channelConfig });
     const policy = approvedBy ? { decision: "allow", reason: `approved by ${approvedBy}`, risks: [] } : this.policyEngine.evaluate({ message, channelConfig, runtimeId, runtimeSpec });
 
-    await this.store.appendAudit({ type: "policy.evaluated", sessionId, runtimeId, userId: message.userId, decision: policy.decision, reason: policy.reason, risks: policy.risks });
+    await this.store.appendAudit({ type: "policy.evaluated", taskId: task.id, sessionId, runtimeId, userId: message.userId, decision: policy.decision, reason: policy.reason, risks: policy.risks });
 
     if (policy.decision === "deny") {
       await responder.fail(`OpenTag denied this request: ${policy.reason}`);
@@ -210,16 +220,16 @@ export class OpenTagEngine {
     }
 
     if (policy.decision === "require_approval") {
-      const approval = await this.createApproval({ session, message, runtimeId, channelConfig, policy, kind: "turn" });
+      const approval = await this.createApproval({ session, task, message, runtimeId, channelConfig, policy, kind: "turn" });
       await this.sessionManager.setStatus(session, "waiting_approval", { waitingApprovalId: approval.id });
       await responder.sendApproval(approval);
       return;
     }
 
-    await this.executeRuntimeTurn({ session, message, responder, runtimeId, channelConfig, approvedBy });
+    await this.executeRuntimeTurn({ session, task, message, responder, runtimeId, channelConfig, approvedBy });
   }
 
-  async createApproval({ session, message, runtimeId, channelConfig, policy, kind = "turn" }) {
+  async createApproval({ session, task = null, message, runtimeId, channelConfig, policy, kind = "turn" }) {
     const approval = {
       id: randomId("appr"),
       kind,
@@ -232,10 +242,12 @@ export class OpenTagEngine {
       requestedBy: message.userId,
       requiredApprovers: channelConfig.approvers || [],
       runtimeId,
+      taskId: task?.id || null,
       reason: policy.reason,
       risks: policy.risks,
       expiresAt: hoursFromNow(2),
       payload: {
+        task,
         message: {
           ...message,
           raw: undefined
@@ -244,7 +256,7 @@ export class OpenTagEngine {
       }
     };
     await this.store.createApproval(approval);
-    await this.store.appendAudit({ type: "approval.created", sessionId: session.id, approvalId: approval.id, kind, reason: approval.reason, risks: approval.risks });
+    await this.store.appendAudit({ type: "approval.created", taskId: task?.id || null, sessionId: session.id, approvalId: approval.id, kind, reason: approval.reason, risks: approval.risks });
     return approval;
   }
 
@@ -283,6 +295,7 @@ export class OpenTagEngine {
     return this.enqueue(approval.sessionId, async () => {
       await this.processTurn({
         sessionId: approval.sessionId,
+        task: approval.payload.task || null,
         message: approval.payload.message,
         responder,
         runtimeId: approval.runtimeId,
@@ -308,7 +321,7 @@ export class OpenTagEngine {
     await responder.sendText(`Approval ${approvalId} denied by <@${denierUserId}>.`);
   }
 
-  async executeRuntimeTurn({ session, message, responder, runtimeId, channelConfig, approvedBy }) {
+  async executeRuntimeTurn({ session, task, message, responder, runtimeId, channelConfig, approvedBy }) {
     const adapter = this.runtimeRegistry.get(runtimeId);
     const sandbox = await this.sandboxManager.createSandbox({ sessionId: session.id, runtimeId, channelConfig });
     const preparedContext = await this.prepareRuntimeContext({ message, responder, sandbox, session, runtimeId });
@@ -320,11 +333,13 @@ export class OpenTagEngine {
     let finalText = "";
     let emittedText = "";
     let pausedForApproval = false;
+    let runtimeEventSeq = 0;
 
     await this.store.createRun({
       id: sandbox.id,
       sessionId: session.id,
       runtimeId,
+      taskId: task.id,
       status: "running",
       sandboxDir: sandbox.dir,
       workspaceRoot: sandbox.workspaceRoot,
@@ -334,10 +349,13 @@ export class OpenTagEngine {
 
     session = await this.sessionManager.setStatus(session, "running", { runtimeId, currentRunId: sandbox.id, waitingApprovalId: null, lastStartedAt: nowIso() });
     await responder.sendStatus(`OpenTag started runtime \`${runtimeId}\` for this thread.`);
-    await this.store.appendAudit({ type: "runtime.started", sessionId: session.id, runtimeId, sandboxId: sandbox.id, approvedBy });
+    await this.store.appendAudit({ type: "runtime.started", taskId: task.id, sessionId: session.id, runtimeId, sandboxId: sandbox.id, approvedBy });
 
     try {
-      for await (const event of adapter.run({ prompt, message, session, sandbox, agentProxy: proxyContext, signal: controller.signal })) {
+      for await (const rawEvent of adapter.run({ prompt, task, message, session, sandbox, agentProxy: proxyContext, signal: controller.signal })) {
+        const event = normalizeRuntimeEvent(rawEvent);
+        runtimeEventSeq += 1;
+        await this.store.appendRuntimeEvent(sandbox.id, { ...event, seq: runtimeEventSeq, taskId: task.id, sessionId: session.id, runtimeId });
         if (event.type === "started") {
           await responder.sendStatus(event.message || `Runtime ${runtimeId} is running...`);
         } else if (event.type === "token") {
@@ -348,31 +366,31 @@ export class OpenTagEngine {
         } else if (event.type === "tool_call") {
           const toolName = event.name || "tool";
           const toolPolicy = this.policyEngine.evaluateToolCall({ toolName, argumentsText: event.argumentsText || event.arguments || "", channelConfig });
-          await this.store.appendAudit({ type: "runtime.tool_call", sessionId: session.id, runtimeId, tool: toolName, risk: event.risk || null, decision: toolPolicy.decision, reason: toolPolicy.reason });
+          await this.store.appendAudit({ type: "runtime.tool_call", taskId: task.id, sessionId: session.id, runtimeId, tool: toolName, risk: event.risk || null, decision: toolPolicy.decision, reason: toolPolicy.reason });
           if (toolPolicy.decision === "deny") throw new Error(`Tool call denied: ${toolPolicy.reason}`);
           if (approvedBy && toolPolicy.decision === "require_approval") {
-            await this.store.appendAudit({ type: "runtime.tool_call_covered_by_turn_approval", sessionId: session.id, runtimeId, tool: toolName, approvedBy, reason: toolPolicy.reason });
+            await this.store.appendAudit({ type: "runtime.tool_call_covered_by_turn_approval", taskId: task.id, sessionId: session.id, runtimeId, tool: toolName, approvedBy, reason: toolPolicy.reason });
             continue;
           }
           if (toolPolicy.decision === "require_approval") {
-            const approval = await this.createApproval({ session, message, runtimeId, channelConfig, policy: toolPolicy, kind: "tool_call" });
+            const approval = await this.createApproval({ session, task, message, runtimeId, channelConfig, policy: toolPolicy, kind: "tool_call" });
             await this.sessionManager.setStatus(session, "waiting_approval", { waitingApprovalId: approval.id, currentRunId: null });
             await responder.sendApproval(approval);
-            await this.store.appendAudit({ type: "runtime.approval_requested", sessionId: session.id, runtimeId, approvalId: approval.id, source: "tool_policy" });
+            await this.store.appendAudit({ type: "runtime.approval_requested", taskId: task.id, sessionId: session.id, runtimeId, approvalId: approval.id, source: "tool_policy" });
             pausedForApproval = true;
             break;
           }
         } else if (event.type === "approval_request") {
-          const approval = await this.createApproval({ session, message, runtimeId, channelConfig, policy: { reason: event.reason || "Runtime requested approval", risks: event.risks || ["runtime-request"] }, kind: "tool_call" });
+          const approval = await this.createApproval({ session, task, message, runtimeId, channelConfig, policy: { reason: event.reason || "Runtime requested approval", risks: event.risks || ["runtime-request"] }, kind: "tool_call" });
           await this.sessionManager.setStatus(session, "waiting_approval", { waitingApprovalId: approval.id, currentRunId: null });
           await responder.sendApproval(approval);
-          await this.store.appendAudit({ type: "runtime.approval_requested", sessionId: session.id, runtimeId, approvalId: approval.id, source: "runtime" });
+          await this.store.appendAudit({ type: "runtime.approval_requested", taskId: task.id, sessionId: session.id, runtimeId, approvalId: approval.id, source: "runtime" });
           pausedForApproval = true;
           break;
         } else if (event.type === "artifact") {
           const artifact = await this.store.createArtifact({ id: randomId("art"), sessionId: session.id, runId: sandbox.id, runtimeId, path: event.path, relativePath: event.relativePath || event.path, title: event.title, mimeType: event.mimeType });
           await responder.sendText(`Artifact: ${artifact.relativePath || artifact.path}`);
-          await this.store.appendAudit({ type: "runtime.artifact", sessionId: session.id, runtimeId, artifactId: artifact.id, path: artifact.path });
+          await this.store.appendAudit({ type: "runtime.artifact", taskId: task.id, sessionId: session.id, runtimeId, artifactId: artifact.id, path: artifact.path });
         } else if (event.type === "completed") {
           finalText = event.output || event.summary || emittedText || "Runtime completed.";
         } else if (event.type === "failed") {
@@ -386,12 +404,14 @@ export class OpenTagEngine {
       }
 
       const collectedArtifacts = await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger });
+      const prCandidate = await createPullRequestCandidateForArtifacts({ store: this.store, session, run: { id: sandbox.id, runtimeId, taskId: task.id }, artifacts: collectedArtifacts, logger: this.logger });
+      if (prCandidate) await responder.sendText(`Pull request candidate: ${prCandidate.id}`);
       await responder.complete(finalText || emittedText || "Runtime completed.");
       await this.store.appendMessage(session.id, { role: "assistant", runtimeId, text: finalText || emittedText || "Runtime completed." });
       session = await this.sessionManager.incrementTurn(session);
       await this.sessionManager.setStatus(session, "active", { lastCompletedAt: nowIso(), currentRunId: null });
       await this.store.updateRun(sandbox.id, { status: "completed", outputPreview: (finalText || emittedText).slice(0, 4000), artifactCount: collectedArtifacts.length, completedAt: nowIso() });
-      await this.store.appendAudit({ type: "runtime.completed", sessionId: session.id, runtimeId, sandboxId: sandbox.id, artifactCount: collectedArtifacts.length });
+      await this.store.appendAudit({ type: "runtime.completed", taskId: task.id, sessionId: session.id, runtimeId, sandboxId: sandbox.id, artifactCount: collectedArtifacts.length });
     } catch (error) {
       const messageText = error && error.message ? error.message : String(error);
       await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger }).catch(() => []);
@@ -399,7 +419,7 @@ export class OpenTagEngine {
       const status = controller.signal.aborted ? "cancelled" : "failed";
       await this.sessionManager.setStatus(session, status, { lastError: messageText, currentRunId: null });
       await this.store.updateRun(sandbox.id, { status, error: messageText, completedAt: nowIso() }).catch(() => null);
-      await this.store.appendAudit({ type: "runtime.failed", sessionId: session.id, runtimeId, sandboxId: sandbox.id, error: messageText });
+      await this.store.appendAudit({ type: "runtime.failed", taskId: task.id, sessionId: session.id, runtimeId, sandboxId: sandbox.id, error: messageText });
     } finally {
       this.abortControllers.delete(session.id);
       this.agentProxy?.revokeRunContext(proxyContext?.token);
@@ -509,6 +529,19 @@ export class OpenTagEngine {
       });
     this.queues.set(sessionId, next);
     return next;
+  }
+}
+
+async function createPullRequestCandidateForArtifacts({ store, session, run, artifacts, logger }) {
+  const candidateInput = buildPullRequestCandidate({ session, run, artifacts });
+  if (!candidateInput) return null;
+  try {
+    const candidate = await store.createPullRequestCandidate(candidateInput);
+    await store.appendAudit({ type: "artifact.pr_candidate.created", sessionId: session.id, runId: run.id, runtimeId: run.runtimeId, taskId: run.taskId, candidateId: candidate.id, artifactIds: candidate.artifactIds });
+    return candidate;
+  } catch (error) {
+    logger?.warn?.("artifact.pr_candidate_failed", { sessionId: session.id, runId: run.id, error: error.message });
+    return null;
   }
 }
 

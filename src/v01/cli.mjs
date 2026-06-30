@@ -39,7 +39,7 @@ function printHelp() {
 
 Usage:
   opentag setup --local --project . --runtime codex [--open-slack]
-  opentag doctor [--strict] [--offline]
+  opentag doctor [--strict] [--offline] [--json]
   opentag daemon start|stop|restart|status|logs|install|uninstall
   opentag slack manifest [--write path]
   opentag slack open|test|scopes

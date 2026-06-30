@@ -113,6 +113,14 @@ If you have not filled Slack tokens yet, check only local config and runtime ava
 opentag doctor --strict --offline
 ```
 
+For scripts, local UI work, or issue reports, use structured output:
+
+```bash
+opentag doctor --strict --offline --json
+```
+
+When checks fail, `opentag doctor` prints a short `Next actions` list with the files or commands to fix first.
+
 You can also verify the Slack bot token:
 
 ```bash
