@@ -86,15 +86,20 @@ cd OpenTag
 npm install
 npm link
 opentag init --project . --runtime mock --open-slack
+opentag setup launch
+opentag doctor --strict
 ```
 
-初始化后，OpenTag 会生成本地配置、Slack App manifest 和 `.env` 模板。接下来：
+初始化后，OpenTag 会生成本地配置、Slack App manifest 和 `.env` 模板。`opentag setup launch` 会在需要时启动本地 daemon，并打开 `http://127.0.0.1:8787/setup` 上的一步步配置向导。
 
-1. 在 Slack 后台从 `~/.opentag/slack-app-manifest.yml` 创建 App。
-2. 把 Slack token 填入 `~/.opentag/.env`。
-3. 运行 `opentag doctor --strict` 检查配置。
-4. 运行 `opentag daemon start` 启动本地 daemon。
-5. 邀请 bot 进入目标 Slack 频道并开始使用。
+向导会按步骤完成：
+
+1. 扫描本地已安装 Agent，并选择 runtime。
+2. 引导你用生成的 manifest 创建 Slack App。
+3. 把 Slack token 保存到本地 `~/.opentag/.env`。
+4. 展示配置、manifest、runtime 和 token 的验证 checklist。
+
+最后邀请 bot 进入目标 Slack 频道并开始使用。
 
 完整安装和 Slack 图文配置说明见 [`docs/user-guide/01-install.zh-CN.md`](docs/user-guide/01-install.zh-CN.md)。
 

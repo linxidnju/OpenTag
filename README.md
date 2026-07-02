@@ -96,10 +96,11 @@ Start the Slack gateway with the example configuration:
 ```bash
 npm link
 opentag init --project . --runtime mock --open-slack
-$EDITOR ~/.opentag/.env
+opentag setup launch
 opentag doctor --strict
-opentag daemon start
 ```
+
+`opentag setup launch` starts the local daemon when needed and opens a step-by-step setup wizard at `http://127.0.0.1:8787/setup`. The wizard walks through agent selection, Slack manifest import, local token saving, and final verification.
 
 Run this any time to see the next setup step:
 

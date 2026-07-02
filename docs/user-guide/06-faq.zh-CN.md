@@ -14,14 +14,14 @@ Core Slack gateway 支持 HTTP Events API，但本地 v0.1 设置优先使用 So
 
 ## 非开发者可以使用吗？
 
-Workspace owner 安装 Slack App 并启动 daemon 后，非开发者可以从 Slack 使用 OpenTag。当前安装流程仍然需要命令行设置。
+Workspace owner 安装 Slack App 并启动 daemon 后，非开发者可以从 Slack 使用 OpenTag。自托管安装现在包含一个通过 `opentag setup launch` 打开的本地浏览器向导，但首次设置仍然从 CLI 开始。
 
 ## OpenTag 在哪里运行？
 
 默认设置中，OpenTag 运行在启动以下命令的机器上：
 
 ```bash
-opentag daemon start
+opentag setup launch
 ```
 
 这台机器拥有本地项目访问、runtime 执行、config、logs 和本地数据。

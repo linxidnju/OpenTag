@@ -12,14 +12,14 @@ HTTP Events API support exists in the core Slack gateway, but local v0.1 setup i
 
 ## Can non-developers use it?
 
-They can use OpenTag from Slack after a workspace owner has installed the Slack app and started the daemon. The install flow still requires command-line setup today.
+They can use OpenTag from Slack after a workspace owner has installed the Slack app and started the daemon. The self-hosted install now includes a local browser wizard opened with `opentag setup launch`, but the first setup still starts from the CLI.
 
 ## Where is OpenTag running?
 
 In the default setup, OpenTag runs on the machine that starts:
 
 ```bash
-opentag daemon start
+opentag setup launch
 ```
 
 That machine owns the local project access, runtime execution, config, logs, and local data.
@@ -108,4 +108,3 @@ OpenTag avoids accidental execution. In channels, start tasks with `@OpenTag`. O
 - Test daemon restart and logs.
 - Review local audit data handling.
 - Start with `mock` or read-only tasks before allowing write-capable runtimes.
-

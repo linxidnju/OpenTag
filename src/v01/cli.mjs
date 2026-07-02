@@ -41,6 +41,7 @@ function printHelp() {
 
 Usage:
   opentag init --project . --runtime codex [--open-slack]
+  opentag setup launch|open|url
   opentag next
   opentag doctor [--strict] [--offline] [--json]
   opentag daemon start|stop|restart|status|logs|install|uninstall

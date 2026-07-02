@@ -61,15 +61,18 @@ For a local Slack setup:
 npm install
 npm link
 opentag init --project . --runtime codex --open-slack
+opentag setup launch
+opentag doctor --strict
 ```
 
-Then:
+`opentag setup launch` starts the local daemon if needed and opens the browser-based setup wizard. The wizard shows one page per step:
 
-1. Import the generated Slack manifest from `~/.opentag/slack-app-manifest.yml`.
-2. Fill the Slack token values in `~/.opentag/.env`.
-3. Run `opentag doctor --strict`.
-4. Run `opentag daemon start`.
-5. Invite the bot to a Slack channel and mention it.
+1. Scan installed local agents and choose a runtime.
+2. Create a Slack app from the generated manifest.
+3. Save Slack tokens locally into `~/.opentag/.env`.
+4. Verify config, manifest, runtime, and token readiness.
+
+Then invite the bot to a Slack channel and mention it.
 
 Run `opentag next` any time to print the next setup step.
 

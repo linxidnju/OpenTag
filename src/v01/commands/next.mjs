@@ -29,11 +29,12 @@ export async function runNext(args) {
     if (!value || isPlaceholder(value)) missingSlack.push(envName);
   }
   if (missingSlack.length) {
+    actions.push("Run: opentag setup launch");
     actions.push(`Fill ${missingSlack.join(", ")} in ${envPath()}.`);
     actions.push("Run: opentag doctor --strict");
   } else {
     actions.push("Run: opentag doctor --strict");
-    actions.push("Run: opentag daemon start");
+    actions.push("Run: opentag setup launch");
   }
 
   print(actions);

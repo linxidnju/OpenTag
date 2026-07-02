@@ -18,6 +18,11 @@ try {
   if (!Array.isArray(doctor.checks) || !doctor.checks.some((item) => item.name === "manifest:file")) throw new Error("doctor --json missing manifest:file check");
   const next = run(["./bin/opentag.mjs", "next"], { env });
   if (!next.stdout.includes("OpenTag next steps")) throw new Error("next did not print setup guidance");
+  if (!next.stdout.includes("opentag setup launch")) throw new Error("next did not mention local setup launch");
+  const help = run(["./bin/opentag.mjs", "help"], { env });
+  if (!help.stdout.includes("opentag setup launch|open|url")) throw new Error("help did not mention setup launch");
+  const setupUrl = run(["./bin/opentag.mjs", "setup", "url"], { env });
+  if (!setupUrl.stdout.includes("http://127.0.0.1:8787/setup")) throw new Error("setup url did not print local setup UI URL");
   run(["./bin/opentag.mjs", "slack", "manifest", "--write", path.join(tmp, "manifest.yml")], { env });
   const projectList = run(["./bin/opentag.mjs", "project", "list"], { env });
   if (!projectList.stdout.includes(repo)) throw new Error("project list did not include setup project");

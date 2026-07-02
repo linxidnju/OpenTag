@@ -1,5 +1,9 @@
 import http from "node:http";
 import { randomId } from "../utils/id.js";
+import { SetupService } from "../setup/SetupService.js";
+import { renderSetupPage } from "../setup/setupPage.js";
+import { manifestPath } from "../v01/lib/paths.mjs";
+import { slackManifest } from "../v01/templates/slackManifest.mjs";
 
 export class AdminServer {
   constructor({ config, engine, store, runtimeRegistry, agentProxy, logger }) {
@@ -9,6 +13,7 @@ export class AdminServer {
     this.runtimeRegistry = runtimeRegistry;
     this.agentProxy = agentProxy;
     this.logger = logger;
+    this.setupService = new SetupService({ config, runtimeRegistry, logger });
     this.server = null;
   }
 
@@ -57,6 +62,35 @@ export class AdminServer {
 
     if (method === "GET" && url.pathname === "/healthz") {
       return sendJson(res, 200, { ok: true, app: this.config.app.name, time: new Date().toISOString() });
+    }
+    if (method === "GET" && url.pathname === "/setup") {
+      return sendHtml(res, 200, renderSetupPage());
+    }
+    if (method === "GET" && url.pathname === "/v1/setup/state") {
+      return sendJson(res, 200, { ok: true, ...(await this.setupService.state()) });
+    }
+    if (method === "GET" && url.pathname === "/v1/setup/identity") {
+      return sendJson(res, 200, { ok: true, ...this.setupService.identity() });
+    }
+    if (method === "GET" && url.pathname === "/v1/setup/diagnostics") {
+      return sendJson(res, 200, { ok: true, diagnostics: await this.setupService.diagnostics() });
+    }
+    if (method === "POST" && url.pathname === "/v1/setup/runtime") {
+      const body = await readJson(req);
+      if (!body.runtimeId) return sendJson(res, 400, { ok: false, error: "missing runtimeId" });
+      return sendJson(res, 200, { ok: true, ...(await this.setupService.selectRuntime(body.runtimeId)) });
+    }
+    if (method === "POST" && url.pathname === "/v1/setup/slack/tokens") {
+      const body = await readJson(req);
+      return sendJson(res, 200, { ok: true, ...(await this.setupService.saveSlackTokens(body)) });
+    }
+    if (method === "GET" && url.pathname === "/v1/setup/slack/manifest") {
+      const manifest = slackManifest({ appName: this.config.app.name, slashCommand: this.config.slack?.slashCommand || "/opentag" });
+      return sendJson(res, 200, { ok: true, path: manifestPath(), manifest });
+    }
+    if (method === "GET" && url.pathname === "/setup/slack-app-manifest.yml") {
+      const manifest = slackManifest({ appName: this.config.app.name, slashCommand: this.config.slack?.slashCommand || "/opentag" });
+      return sendText(res, 200, manifest, "text/yaml; charset=utf-8");
     }
     if (method === "GET" && url.pathname === "/v1/runtimes") {
       return sendJson(res, 200, { ok: true, runtimes: this.runtimeRegistry.list() });
@@ -151,6 +185,16 @@ export class AdminServer {
 function sendJson(res, status, body) {
   const text = `${JSON.stringify(body, null, 2)}\n`;
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "content-length": Buffer.byteLength(text) });
+  res.end(text);
+}
+
+function sendHtml(res, status, html) {
+  res.writeHead(status, { "content-type": "text/html; charset=utf-8", "content-length": Buffer.byteLength(html) });
+  res.end(html);
+}
+
+function sendText(res, status, text, contentType) {
+  res.writeHead(status, { "content-type": contentType, "content-length": Buffer.byteLength(text) });
   res.end(text);
 }
 

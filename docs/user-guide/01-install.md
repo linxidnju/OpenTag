@@ -62,7 +62,28 @@ It also writes a copy of the generated Slack manifest to:
 examples/slack-app-manifest.generated.yml
 ```
 
+## Open The Step-by-Step Setup Wizard
+
+Start the local daemon and open the setup page with one command:
+
+```bash
+opentag setup launch
+```
+
+If the daemon is already running, `opentag setup launch` only opens the page. To print the URL without opening a browser, run `opentag setup url`.
+
+The setup page runs from the local Admin API. The wizard shows one page per step:
+
+1. **Agent**: scan installed local agents such as Codex, Claude Code, OpenCode, OpenClaw, Hermes, and the built-in mock runtime, then save the selected runtime back to `~/.opentag/config.json`.
+2. **Slack app**: open Slack app creation, copy the generated manifest, or download the manifest YAML for Slack's **Create from manifest** flow.
+3. **Tokens**: save `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_SIGNING_SECRET` into `~/.opentag/.env` without sending them to any hosted service.
+4. **Verify**: show a checklist for config, manifest, selected runtime, runtime installation, and Slack token readiness.
+
+This is still a self-hosted open-source setup flow. It does not create a hosted OpenTag account, and it does not perform Slack OAuth installation yet.
+
 ## Create the Slack App
+
+If you used the setup wizard, follow its **Slack app** page. The manual commands below are useful when you prefer terminal-only setup.
 
 Open Slack app creation:
 
@@ -108,7 +129,7 @@ SLACK_SIGNING_SECRET=...
 SLACK_USER_TOKEN=xoxp-...
 ```
 
-Edit the generated env file:
+Use the setup wizard's **Tokens** page, or edit the generated env file manually:
 
 ```bash
 $EDITOR ~/.opentag/.env
@@ -220,9 +241,15 @@ You can also verify the Slack bot token:
 opentag slack test
 ```
 
-## Start OpenTag
+## Start Or Reopen OpenTag
 
-Start the local daemon:
+The setup wizard command starts the daemon when needed:
+
+```bash
+opentag setup launch
+```
+
+To manage the daemon manually:
 
 ```bash
 opentag daemon start

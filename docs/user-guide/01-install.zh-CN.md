@@ -64,7 +64,32 @@ opentag init --project . --runtime mock --open-slack
 examples/slack-app-manifest.generated.yml
 ```
 
+## 打开一步步设置向导
+
+用一个命令启动本地 daemon 并打开设置页面：
+
+```bash
+opentag setup launch
+```
+
+如果 daemon 已经在运行，`opentag setup launch` 只会打开页面。只想打印 URL、不打开浏览器时，可以运行：
+
+```bash
+opentag setup url
+```
+
+设置页面由本地 Admin API 提供。向导是一页一步：
+
+1. **Agent**：扫描本地已安装的 Codex、Claude Code、OpenCode、OpenClaw、Hermes 和内置 mock runtime，并把选中的 runtime 写回 `~/.opentag/config.json`。
+2. **Slack app**：打开 Slack App 创建页，复制生成的 manifest，或下载 YAML，用于 Slack 的 **Create from manifest** 流程。
+3. **Tokens**：把 `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN` 和 `SLACK_SIGNING_SECRET` 保存到本地 `~/.opentag/.env`，不会发送到任何托管服务。
+4. **Verify**：检查 config、manifest、选中的 runtime、runtime 安装状态和 Slack token 是否就绪。
+
+这仍然是自托管开源设置流程。它不会创建托管 OpenTag 账号，也不会执行 Slack OAuth 安装；托管 OAuth 安装属于后续云端产品。
+
 ## 创建 Slack App
+
+如果你使用设置向导，请按照向导里的 **Slack app** 页面操作。下面的命令适合偏好纯终端设置时使用。
 
 打开 Slack App 创建页面：
 
@@ -110,7 +135,7 @@ SLACK_SIGNING_SECRET=...
 SLACK_USER_TOKEN=xoxp-...
 ```
 
-编辑生成的 env 文件：
+可以使用设置向导里的 **Tokens** 页面保存这些值，也可以手动编辑生成的 env 文件：
 
 ```bash
 $EDITOR ~/.opentag/.env
@@ -222,9 +247,15 @@ opentag next
 opentag slack test
 ```
 
-## 启动 OpenTag
+## 启动或重新打开 OpenTag
 
-启动本地 daemon：
+设置向导命令会在需要时启动 daemon：
+
+```bash
+opentag setup launch
+```
+
+如需手动管理 daemon：
 
 ```bash
 opentag daemon start

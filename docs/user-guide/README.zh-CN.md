@@ -63,15 +63,18 @@ Slack mention、thread、DM 或 /opentag command
 npm install
 npm link
 opentag init --project . --runtime codex --open-slack
+opentag setup launch
+opentag doctor --strict
 ```
 
-然后：
+`opentag setup launch` 会在需要时启动本地 daemon，并打开浏览器中的设置向导。向导是一页一步：
 
-1. 从 `~/.opentag/slack-app-manifest.yml` 导入生成的 Slack manifest。
-2. 在 `~/.opentag/.env` 中填写 Slack token。
-3. 运行 `opentag doctor --strict`。
-4. 运行 `opentag daemon start`。
-5. 邀请 bot 进入 Slack channel 并提及它。
+1. 扫描本地已安装 Agent，并选择 runtime。
+2. 使用生成的 manifest 创建 Slack App。
+3. 把 Slack token 保存到本地 `~/.opentag/.env`。
+4. 检查 config、manifest、runtime 和 token 是否就绪。
+
+然后邀请 bot 进入 Slack channel 并提及它。
 
 随时运行 `opentag next` 可以查看下一步设置提示。
 
