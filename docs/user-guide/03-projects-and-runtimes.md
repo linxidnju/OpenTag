@@ -125,10 +125,16 @@ Important fields:
       "channels": [
         {
           "channelId": "*",
+          "profileName": "Default Access Bundle",
           "defaultRuntime": "codex",
           "allowedRuntimes": ["mock", "codex", "opencode", "openclaw", "hermes"],
           "allowedRoots": ["."],
-          "workspaceRoot": "."
+          "workspaceRoot": ".",
+          "limits": {
+            "maxDailyRuns": 25,
+            "maxRuntimeMs": 900000,
+            "maxArtifactBytes": 5000000
+          }
         }
       ]
     }
@@ -137,3 +143,16 @@ Important fields:
 ```
 
 For real team use, replace `*` with the Slack `team_id` and channel ID.
+
+## Runtime Adapter Templates
+
+For custom agents, start with the templates in
+[`../runtime-adapter-templates.md`](../runtime-adapter-templates.md). The
+recommended path is:
+
+1. Use `generic-cli` for a local command agent.
+2. Use `http` for a local or private agent service.
+3. Expose OpenTag MCP tools only after the runtime boundary is stable.
+
+Keep Slack credentials out of runtime processes unless the runtime config
+explicitly opts in.

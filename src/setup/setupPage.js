@@ -26,6 +26,10 @@ export function renderSetupPage() {
     .progress button.active { border-color:var(--green); background:#e6f4ef; }
     .progress strong { display:block; font-size:13px; }
     .progress span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .step-state { display:inline-flex; margin-top:8px; padding:2px 7px; border-radius:999px; background:#edf0f2; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; }
+    .step-state.done { color:var(--green); background:#e6f4ef; }
+    .step-state.blocked { color:var(--danger); background:#fce8e6; }
+    .step-state.ready { color:var(--blue); background:#e8f0fe; }
     .panel { border:1px solid var(--line); border-radius:8px; padding:24px; min-height:500px; background:#fff; }
     .step-pane { display:none; }
     .step-pane.active { display:block; }
@@ -147,7 +151,18 @@ opentag daemon start</pre>
       renderStep();
     }
     function renderStep() {
-      document.querySelectorAll(".step-tab").forEach((tab) => tab.classList.toggle("active", Number(tab.dataset.step) === currentStep));
+      document.querySelectorAll(".step-tab").forEach((tab) => {
+        tab.classList.toggle("active", Number(tab.dataset.step) === currentStep);
+        const status = diagnostics && diagnostics.steps && diagnostics.steps[Number(tab.dataset.step)] ? diagnostics.steps[Number(tab.dataset.step)].status : "ready";
+        let badge = tab.querySelector(".step-state");
+        if (!badge) {
+          badge = document.createElement("em");
+          badge.className = "step-state";
+          tab.appendChild(badge);
+        }
+        badge.className = "step-state " + status;
+        badge.textContent = status;
+      });
       document.querySelectorAll(".step-pane").forEach((pane) => pane.classList.toggle("active", Number(pane.dataset.pane) === currentStep));
       document.getElementById("back").disabled = currentStep === 0;
       document.getElementById("next").textContent = currentStep === 3 ? "Done" : "Continue";

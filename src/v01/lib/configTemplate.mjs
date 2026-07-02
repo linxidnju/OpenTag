@@ -168,6 +168,7 @@ export function createLocalConfig({ projectDir, runtime = "codex", appName = "Op
           {
             channelId: "*",
             name: "default",
+            profileName: "Default Access Bundle",
             defaultRuntime: runtimeId,
             allowedRuntimes: Object.keys(adapters),
             allowedUsers: [],
@@ -177,6 +178,11 @@ export function createLocalConfig({ projectDir, runtime = "codex", appName = "Op
             workspaceRoot: projectDir,
             instructions: "Prefer concise, auditable Slack-thread updates. Ask before irreversible actions.",
             memory: {},
+            limits: {
+              maxDailyRuns: 25,
+              maxRuntimeMs: 900000,
+              maxArtifactBytes: 5000000
+            },
             policy: {
               requireApprovalForWriteAccess: false,
               allowSelfApproval: true,

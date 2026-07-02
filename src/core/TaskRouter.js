@@ -84,7 +84,7 @@ export class TaskRouter {
   }
 
   checkBudget(spec = {}, channelConfig = {}) {
-    const max = Number(channelConfig.routing?.maxEstimatedCostUsd ?? channelConfig.maxEstimatedCostUsd);
+    const max = Number(channelConfig.limits?.maxEstimatedCostUsd ?? channelConfig.budget?.maxEstimatedCostUsd ?? channelConfig.routing?.maxEstimatedCostUsd ?? channelConfig.maxEstimatedCostUsd);
     if (!Number.isFinite(max) || max < 0) return { ok: true };
     const estimate = Number(spec.cost?.estimatedUsd ?? spec.costEstimateUsd);
     if (Number.isFinite(estimate) && estimate > max) return { ok: false, reason: "cost_exceeds_channel_budget" };

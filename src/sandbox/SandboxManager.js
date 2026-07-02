@@ -54,9 +54,9 @@ export class SandboxManager {
     return true;
   }
 
-  async collectArtifacts({ sandbox, sessionId, runtimeId }) {
+  async collectArtifacts({ sandbox, sessionId, runtimeId, maxBytes = null }) {
     if (!this.config.collectArtifacts) return [];
-    const maxBytes = Number(this.config.artifactMaxBytes || 5_000_000);
+    const maxArtifactBytes = Number(maxBytes || this.config.artifactMaxBytes || 5_000_000);
     const include = this.config.artifactInclude || ["*.md", "*.txt", "*.json", "*.patch", "*.diff", "*.log", "*.csv", "*.png", "*.jpg", "*.jpeg", "*.pdf", "*.html", "*.svg"];
     const files = await walkFiles(sandbox.dir, { maxDepth: 5, maxFiles: 200 });
     const artifacts = [];
@@ -65,7 +65,7 @@ export class SandboxManager {
       if (relativePath === "opentag-run.json") continue;
       if (!matchesAny(relativePath, include)) continue;
       const info = await stat(filePath).catch(() => null);
-      if (!info || !info.isFile() || info.size > maxBytes) continue;
+      if (!info || !info.isFile() || info.size > maxArtifactBytes) continue;
       artifacts.push({
         id: randomId("art"),
         sessionId,

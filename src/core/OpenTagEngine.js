@@ -97,7 +97,7 @@ export class OpenTagEngine {
     return this.handleIncomingMessage(message, responder);
   }
 
-  async handleCommand({ command, session, responder }) {
+  async handleCommand({ command, session, responder, channel }) {
     if (command.name === "help") {
       await responder.sendText([
         "OpenTag commands:",
@@ -126,6 +126,10 @@ export class OpenTagEngine {
     if (command.name === "runtimes") {
       const runtimes = this.runtimeRegistry.list().map((r) => `- ${r.id} (${r.type})${r.command ? ` command=${r.command}` : ""}`).join("\n");
       await responder.sendText(`Configured runtimes:\n${runtimes}`);
+      return;
+    }
+    if (command.name === "profile") {
+      await responder.sendText(formatChannelProfile(channel));
       return;
     }
     if (command.name === "sessions") {
@@ -192,6 +196,10 @@ export class OpenTagEngine {
     const command = parseAdminCommand(text || "help");
     if (command.name === "help") return responder.sendText(formatHelp());
     if (command.name === "runtimes") return responder.sendText(this.formatRuntimes());
+    if (command.name === "profile") {
+      const { channel } = resolveChannelConfig(this.config, { workspaceId: command.workspaceId || "*", channelId: command.channelId || "*" });
+      return responder.sendText(formatChannelProfile(channel));
+    }
     if (command.name === "sessions") return responder.sendText(formatSessions(await this.store.listSessions({ limit: command.limit || 10 })));
     if (command.name === "approvals") return responder.sendText(formatApprovals(await this.store.listApprovals({ status: command.status, limit: command.limit || 10 })));
     if (command.name === "audit") return responder.sendText(formatAudit(await this.store.listAudit({ sessionId: command.sessionId, limit: command.limit || 20 })));
@@ -212,6 +220,14 @@ export class OpenTagEngine {
     const policy = approvedBy ? { decision: "allow", reason: `approved by ${approvedBy}`, risks: [] } : this.policyEngine.evaluate({ message, channelConfig, runtimeId, runtimeSpec });
 
     await this.store.appendAudit({ type: "policy.evaluated", taskId: task.id, sessionId, runtimeId, userId: message.userId, decision: policy.decision, reason: policy.reason, risks: policy.risks });
+
+    const limitDecision = approvedBy ? { ok: true } : await this.evaluateRunLimits({ session, channelConfig });
+    if (!limitDecision.ok) {
+      await this.store.appendAudit({ type: "policy.denied", taskId: task.id, sessionId, runtimeId, userId: message.userId, decision: "deny", reason: limitDecision.reason, source: "channel-limits" });
+      await responder.fail(`OpenTag denied this request: ${limitDecision.reason}`);
+      await this.sessionManager.setStatus(session, "active");
+      return;
+    }
 
     if (policy.decision === "deny") {
       await responder.fail(`OpenTag denied this request: ${policy.reason}`);
@@ -329,6 +345,8 @@ export class OpenTagEngine {
     message = { ...message, ...preparedContext, sandboxInputDir: sandbox.inputDir, sandboxOutputDir: sandbox.outputDir, agentProxy: proxyContext ? { url: proxyContext.url, enabled: true } : { enabled: false } };
     const prompt = await this.contextBuilder.build({ session, incomingMessage: message, channelConfig, runtimeId });
     const controller = new AbortController();
+    const timeoutMs = configuredLimit(channelConfig, "maxRuntimeMs");
+    const timeout = timeoutMs ? setTimeout(() => controller.abort(new Error(`runtime exceeded maxRuntimeMs=${timeoutMs}`)), timeoutMs) : null;
     this.abortControllers.set(session.id, controller);
     let finalText = "";
     let emittedText = "";
@@ -338,6 +356,11 @@ export class OpenTagEngine {
     await this.store.createRun({
       id: sandbox.id,
       sessionId: session.id,
+      platform: session.platform,
+      workspaceId: session.workspaceId,
+      channelId: session.channelId,
+      threadId: session.threadId,
+      requestedBy: message.userId,
       runtimeId,
       taskId: task.id,
       status: "running",
@@ -403,9 +426,10 @@ export class OpenTagEngine {
         return;
       }
 
-      const collectedArtifacts = await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger });
+      const collectedArtifacts = await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger, channelConfig });
       const prCandidate = await createPullRequestCandidateForArtifacts({ store: this.store, session, run: { id: sandbox.id, runtimeId, taskId: task.id }, artifacts: collectedArtifacts, logger: this.logger });
-      if (prCandidate) await responder.sendText(`Pull request candidate: ${prCandidate.id}`);
+      const artifactSummary = formatArtifactSummary({ artifacts: collectedArtifacts, prCandidate });
+      if (artifactSummary) await responder.sendText(artifactSummary);
       await responder.complete(finalText || emittedText || "Runtime completed.");
       await this.store.appendMessage(session.id, { role: "assistant", runtimeId, text: finalText || emittedText || "Runtime completed." });
       session = await this.sessionManager.incrementTurn(session);
@@ -414,17 +438,31 @@ export class OpenTagEngine {
       await this.store.appendAudit({ type: "runtime.completed", taskId: task.id, sessionId: session.id, runtimeId, sandboxId: sandbox.id, artifactCount: collectedArtifacts.length });
     } catch (error) {
       const messageText = error && error.message ? error.message : String(error);
-      await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger }).catch(() => []);
+      await collectAndRecordArtifacts({ store: this.store, sandboxManager: this.sandboxManager, sandbox, sessionId: session.id, runtimeId, responder, artifactUploader: this.artifactUploader, logger: this.logger, channelConfig }).catch(() => []);
       await responder.fail(messageText);
       const status = controller.signal.aborted ? "cancelled" : "failed";
       await this.sessionManager.setStatus(session, status, { lastError: messageText, currentRunId: null });
       await this.store.updateRun(sandbox.id, { status, error: messageText, completedAt: nowIso() }).catch(() => null);
       await this.store.appendAudit({ type: "runtime.failed", taskId: task.id, sessionId: session.id, runtimeId, sandboxId: sandbox.id, error: messageText });
     } finally {
+      if (timeout) clearTimeout(timeout);
       this.abortControllers.delete(session.id);
       this.agentProxy?.revokeRunContext(proxyContext?.token);
       await this.sandboxManager.cleanupSandbox(sandbox).catch((error) => this.logger.warn("sandbox.cleanup_failed", { sessionId: session.id, sandboxId: sandbox.id, error: error.message }));
     }
+  }
+
+  async evaluateRunLimits({ session, channelConfig }) {
+    const maxDailyRuns = configuredLimit(channelConfig, "maxDailyRuns");
+    if (!maxDailyRuns) return { ok: true };
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const runs = await this.store.listRuns({ limit: null });
+    const used = runs.filter((run) => {
+      if (run.workspaceId !== session.workspaceId || run.channelId !== session.channelId) return false;
+      return String(run.createdAt || "") >= since && !["cancelled", "failed"].includes(run.status);
+    }).length;
+    if (used >= maxDailyRuns) return { ok: false, reason: `Channel daily run limit reached (${used}/${maxDailyRuns})` };
+    return { ok: true };
   }
 
   async prepareRuntimeContext({ message, responder, sandbox, session, runtimeId }) {
@@ -546,10 +584,10 @@ async function createPullRequestCandidateForArtifacts({ store, session, run, art
 }
 
 
-async function collectAndRecordArtifacts({ store, sandboxManager, sandbox, sessionId, runtimeId, responder, artifactUploader, logger }) {
+async function collectAndRecordArtifacts({ store, sandboxManager, sandbox, sessionId, runtimeId, responder, artifactUploader, logger, channelConfig }) {
   let artifacts = [];
   try {
-    artifacts = await sandboxManager.collectArtifacts({ sandbox, sessionId, runtimeId });
+    artifacts = await sandboxManager.collectArtifacts({ sandbox, sessionId, runtimeId, maxBytes: configuredLimit(channelConfig, "maxArtifactBytes") });
   } catch (error) {
     logger?.warn?.("artifact.collection_failed", { sessionId, runId: sandbox?.id, error: error.message });
     return [];
@@ -596,7 +634,7 @@ function parseRuntimeOverride(text) {
 }
 
 function parseOpenTagCommand(text) {
-  const match = String(text).trim().match(/^\/opentag(?:\s+(help|status|runtimes|cancel|sessions|approvals|audit|context))?\s*$/i);
+  const match = String(text).trim().match(/^\/opentag(?:\s+(help|status|runtimes|cancel|sessions|approvals|audit|context|profile))?\s*$/i);
   if (!match) return null;
   return { name: (match[1] || "help").toLowerCase() };
 }
@@ -630,14 +668,62 @@ function formatHelp() {
     "OpenTag slash commands:",
     "`/opentag help`",
     "`/opentag runtimes`",
+    "`/opentag profile`",
     "`/opentag sessions [limit]`",
     "`/opentag status <session_id>`",
     "`/opentag approvals [pending|approved|denied] [limit]`",
     "`/opentag audit [session_id] [limit]`",
     "`/opentag cancel <session_id>`",
     "",
-    "Inside a thread: `/opentag status`, `/opentag runtimes`, `/opentag approvals`, `/opentag cancel`, `/runtime <runtime-id> <request>`."
+    "Inside a thread: `/opentag status`, `/opentag profile`, `/opentag runtimes`, `/opentag approvals`, `/opentag cancel`, `/runtime <runtime-id> <request>`."
   ].join("\n");
+}
+
+function formatChannelProfile(channelConfig = {}) {
+  const limits = channelConfig.limits || channelConfig.budget || {};
+  const lines = [
+    `Channel Profile: ${channelConfig.profileName || channelConfig.accessBundle || channelConfig.name || channelConfig.channelId || "default"}`,
+    `defaultRuntime=${channelConfig.defaultRuntime || "default"}`,
+    `allowedRuntimes=${(channelConfig.allowedRuntimes || []).join(", ") || "all configured"}`,
+    `allowedRoots=${(channelConfig.allowedRoots || []).join(", ") || "not restricted"}`,
+    `allowedUsers=${(channelConfig.allowedUsers || []).join(", ") || "open to channel"}`,
+    `approvers=${(channelConfig.approvers || []).join(", ") || "requester/admin policy"}`,
+    `memoryScope=${channelConfig.memory?.scope || "auto"}`,
+    `writeApproval=${channelConfig.policy?.requireApprovalForWriteAccess !== false ? "required" : "relaxed"}`
+  ];
+  const budgetLines = [
+    configuredLimit(channelConfig, "maxEstimatedCostUsd") ? `maxEstimatedCostUsd=${configuredLimit(channelConfig, "maxEstimatedCostUsd")}` : null,
+    configuredLimit(channelConfig, "maxDailyRuns") ? `maxDailyRuns=${configuredLimit(channelConfig, "maxDailyRuns")}` : null,
+    configuredLimit(channelConfig, "maxRuntimeMs") ? `maxRuntimeMs=${configuredLimit(channelConfig, "maxRuntimeMs")}` : null,
+    configuredLimit(channelConfig, "maxArtifactBytes") ? `maxArtifactBytes=${configuredLimit(channelConfig, "maxArtifactBytes")}` : null
+  ].filter(Boolean);
+  if (budgetLines.length) lines.push(`limits=${budgetLines.join(", ")}`);
+  if (limits.description) lines.push(`description=${limits.description}`);
+  return lines.join("\n");
+}
+
+function formatArtifactSummary({ artifacts, prCandidate }) {
+  const lines = [];
+  if (artifacts?.length) {
+    const counts = artifacts.reduce((acc, artifact) => {
+      const type = artifact.type || "file";
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+    lines.push(`Artifacts generated: ${artifacts.length} (${Object.entries(counts).map(([type, count]) => `${type}:${count}`).join(", ")})`);
+    for (const artifact of artifacts.slice(0, 4)) {
+      lines.push(`- ${artifact.type || "file"}: ${artifact.relativePath || artifact.path}`);
+    }
+    if (artifacts.length > 4) lines.push(`- ... ${artifacts.length - 4} more`);
+  }
+  if (prCandidate) lines.push(`Pull request candidate: ${prCandidate.id}`);
+  return lines.length ? lines.join("\n") : "";
+}
+
+function configuredLimit(channelConfig = {}, key) {
+  const value = channelConfig.limits?.[key] ?? channelConfig.budget?.[key] ?? channelConfig.routing?.[key] ?? channelConfig[key];
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
 }
 
 function formatSessionStatus(session) {

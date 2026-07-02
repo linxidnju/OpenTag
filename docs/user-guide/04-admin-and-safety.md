@@ -20,22 +20,35 @@ Optional scopes such as `reactions:write`, `files:write`, and `chat:write.public
 
 ## Channel Controls
 
-Each channel can define:
+Each channel can define a Channel Profile, also called an Access Bundle in product
+language. This is the boundary that decides which local agent OpenTag can use,
+which files it can touch, who can trigger it, who can approve risky actions, and
+how far a run can go.
 
 ```json
 {
   "channelId": "C123",
+  "profileName": "Engineering Access Bundle",
   "defaultRuntime": "codex",
   "allowedRuntimes": ["mock", "codex"],
   "allowedUsers": [],
   "blockedUsers": [],
   "approvers": [],
   "allowedRoots": ["/path/to/project"],
-  "workspaceRoot": "/path/to/project"
+  "workspaceRoot": "/path/to/project",
+  "limits": {
+    "maxDailyRuns": 25,
+    "maxRuntimeMs": 900000,
+    "maxArtifactBytes": 5000000
+  }
 }
 ```
 
 Use specific channel IDs for production usage instead of `*`.
+
+In Slack, run `/opentag profile` inside a thread to see the active profile.
+From the local Admin API, use `GET /v1/channel-profiles` to inspect all
+configured profiles.
 
 ## Approval Policy
 
@@ -107,6 +120,7 @@ Stored records can include:
 - Runs.
 - Artifacts.
 - Audit logs.
+- Channel memory.
 
 Treat this directory as sensitive team work data.
 
@@ -126,6 +140,23 @@ The generated config enables a local Admin API:
 ```
 
 Keep it bound to `127.0.0.1` for local use. If you expose it outside localhost, require a token and use a private network or reverse proxy with authentication.
+
+Useful local review endpoints:
+
+```text
+GET    /v1/channel-profiles
+GET    /v1/memory?workspaceId=T123&channelId=C123
+PATCH  /v1/memory/:memory_id
+DELETE /v1/memory/:memory_id?workspaceId=T123&channelId=C123
+GET    /v1/runs
+GET    /v1/runs/:run_id/events
+GET    /v1/artifacts
+GET    /v1/pr-candidates
+GET    /v1/audit
+```
+
+Memory review/edit/delete is intentionally local-admin only today. Slack users
+can still use `remember: ...`, `memory`, and `forget memory <id>` from a channel.
 
 ## Secrets
 

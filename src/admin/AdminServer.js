@@ -4,6 +4,7 @@ import { SetupService } from "../setup/SetupService.js";
 import { renderSetupPage } from "../setup/setupPage.js";
 import { manifestPath } from "../v01/lib/paths.mjs";
 import { slackManifest } from "../v01/templates/slackManifest.mjs";
+import { buildChannelProfiles } from "../channel/ChannelProfile.js";
 
 export class AdminServer {
   constructor({ config, engine, store, runtimeRegistry, agentProxy, logger }) {
@@ -143,6 +144,35 @@ export class AdminServer {
     if (method === "GET" && url.pathname === "/v1/pr-candidates") {
       const candidates = await this.store.listPullRequestCandidates({ limit: numberParam(url, "limit", 100), sessionId: url.searchParams.get("sessionId") || undefined, runId: url.searchParams.get("runId") || undefined, status: url.searchParams.get("status") || undefined });
       return sendJson(res, 200, { ok: true, candidates });
+    }
+    if (method === "GET" && url.pathname === "/v1/channel-profiles") {
+      return sendJson(res, 200, { ok: true, profiles: buildChannelProfiles(this.config) });
+    }
+    if (method === "GET" && url.pathname === "/v1/memory") {
+      const workspaceId = url.searchParams.get("workspaceId") || this.config.workspaces?.[0]?.workspaceId || "*";
+      const channelId = url.searchParams.get("channelId") || null;
+      const includeChannel = url.searchParams.get("includeChannel") !== "false";
+      const entries = await this.store.listMemoryEntries({ workspaceId, channelId, includeWorkspace: true, includeChannel, limit: numberParam(url, "limit", 100) });
+      return sendJson(res, 200, { ok: true, entries });
+    }
+    const memoryMatch = url.pathname.match(/^\/v1\/memory\/([^/]+)$/);
+    if (memoryMatch && method === "PATCH") {
+      const body = await readJson(req);
+      if (!body.workspaceId) return sendJson(res, 400, { ok: false, error: "missing workspaceId" });
+      if (!body.text || !String(body.text).trim()) return sendJson(res, 400, { ok: false, error: "missing text" });
+      const entry = await this.store.updateMemoryEntry({ workspaceId: body.workspaceId, channelId: body.channelId || null, memoryId: decodeURIComponent(memoryMatch[1]), text: body.text, updatedBy: body.updatedBy || "admin-api" });
+      if (!entry) return sendJson(res, 404, { ok: false, error: "memory not found" });
+      await this.store.appendAudit({ type: "memory.updated", workspaceId: body.workspaceId, channelId: body.channelId || null, memoryId: entry.id, updatedBy: body.updatedBy || "admin-api" });
+      return sendJson(res, 200, { ok: true, entry });
+    }
+    if (memoryMatch && method === "DELETE") {
+      const workspaceId = url.searchParams.get("workspaceId");
+      if (!workspaceId) return sendJson(res, 400, { ok: false, error: "missing workspaceId" });
+      const channelId = url.searchParams.get("channelId") || null;
+      const memoryId = decodeURIComponent(memoryMatch[1]);
+      const deleted = await this.store.deleteMemoryEntry({ workspaceId, channelId, memoryId });
+      if (deleted) await this.store.appendAudit({ type: "memory.deleted", workspaceId, channelId, memoryId, deletedBy: "admin-api" });
+      return sendJson(res, deleted ? 200 : 404, { ok: deleted, memoryId, error: deleted ? undefined : "memory not found" });
     }
     if (method === "POST" && url.pathname === "/v1/run") {
       const body = await readJson(req);

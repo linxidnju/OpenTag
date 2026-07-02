@@ -5,11 +5,11 @@
 <h1 align="center">OpenTag</h1>
 
 <p align="center">
-  <strong>面向团队频道的开源 Agent Gateway。</strong>
+  <strong>把本地 AI Agent 拉进团队频道的开源协作层。</strong>
 </p>
 
 <p align="center">
-  把 AI Agent 带进 Slack thread，并提供共享上下文、审批、审计记录和可插拔 Agent Runtime。
+  在 Slack thread 里发起任务，在你自己的机器/环境里执行，过程可见、权限可控、结果可审计。
 </p>
 
 <p align="center">
@@ -38,9 +38,9 @@ OpenTag 把 AI Agent 带到团队已经在使用的协作场景里：Slack chann
 - 让 Agent 根据 Slack thread 调查 bug。
 - 让团队成员在 Agent 运行前或运行中补充上下文。
 - 把任务路由到不同 Agent 后端，例如 Codex、Claude Code、OpenCode、Docker Agent、HTTP Agent 或自研 CLI。
-- 给不同频道配置不同项目、权限、记忆和默认 Agent。
+- 用 Channel Profile / Access Bundle 给不同频道配置项目、权限、记忆、默认 Agent 和运行限额。
 - 在写操作或高风险动作前要求人工审批。
-- 保留 session、决策、输出和 artifact 记录。
+- 保留 session、决策、输出、artifact 和 audit 记录。
 
 OpenTag 适合那些需要上下文、权限和可追溯性的团队 Agent 工作流。
 
@@ -69,7 +69,7 @@ Agent 会回复在同一个 Slack thread 里，工作过程和结果都保留在
 很多 AI 编码和自动化工具默认围绕“一个本地操作者”设计。OpenTag 默认围绕“团队共享频道”设计。
 
 - **默认共享**：对话、上下文和结果留在团队 thread 里。
-- **理解频道边界**：每个频道可以有自己的项目、指令、记忆、权限和默认 runtime。
+- **理解频道边界**：每个频道可以有自己的项目、指令、记忆、权限、默认 runtime 和运行限额。
 - **不绑定单一 Agent**：可以根据任务选择适合的 Agent 后端。
 - **支持审批**：敏感动作可以暂停，等待人工确认。
 - **可审计**：session、message、approval、output 和 artifact 可以后续复盘。

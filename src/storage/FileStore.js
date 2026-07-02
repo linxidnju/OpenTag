@@ -428,6 +428,28 @@ export class FileStore {
     return false;
   }
 
+  async updateMemoryEntry({ workspaceId, channelId = null, memoryId, text, updatedBy = null }) {
+    const paths = [
+      this.memoryPath(workspaceId, "workspace"),
+      channelId ? this.memoryPath(workspaceId, "channel", channelId) : null
+    ].filter(Boolean);
+    for (const filePath of paths) {
+      const current = await readJsonIfExists(filePath, null);
+      if (!current?.entries?.length) continue;
+      const index = current.entries.findIndex((entry) => entry.id === memoryId);
+      if (index < 0) continue;
+      current.entries[index] = {
+        ...current.entries[index],
+        text: String(text || "").trim(),
+        updatedBy,
+        updatedAt: nowIso()
+      };
+      await atomicWriteJson(filePath, { ...current, updatedAt: nowIso() });
+      return current.entries[index];
+    }
+    return null;
+  }
+
   async clear() {
     await rm(this.rootDir, { recursive: true, force: true });
     await this.init();

@@ -87,8 +87,27 @@ test("Admin API exposes health and sessions", async () => {
     const candidates = await fetch(app.adminServer.url("/v1/pr-candidates")).then((res) => res.json());
     assert.equal(candidates.ok, true);
     assert.ok(Array.isArray(candidates.candidates));
+    const profiles = await fetch(app.adminServer.url("/v1/channel-profiles")).then((res) => res.json());
+    assert.equal(profiles.ok, true);
+    assert.equal(profiles.profiles[0].label, "default");
+    assert.equal(profiles.profiles[0].defaultRuntime, "mock");
+    assert.match(profiles.profiles[0].summary, /mock runtime/);
+    await app.store.createMemoryEntry({ workspaceId: "T1", scope: "workspace", text: "Use short launch updates.", createdBy: "U1" });
+    const memory = await fetch(app.adminServer.url("/v1/memory?workspaceId=T1")).then((res) => res.json());
+    assert.equal(memory.ok, true);
+    assert.equal(memory.entries.length, 1);
+    const updatedMemory = await fetch(app.adminServer.url(`/v1/memory/${memory.entries[0].id}`), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspaceId: "T1", text: "Use concise launch updates." })
+    }).then((res) => res.json());
+    assert.equal(updatedMemory.ok, true);
+    assert.equal(updatedMemory.entry.text, "Use concise launch updates.");
+    const deletedMemory = await fetch(app.adminServer.url(`/v1/memory/${memory.entries[0].id}?workspaceId=T1`), { method: "DELETE" }).then((res) => res.json());
+    assert.equal(deletedMemory.ok, true);
     const setupPage = await fetch(app.adminServer.url("/setup")).then((res) => res.text());
     assert.match(setupPage, /Connect OpenTag locally/);
+    assert.match(setupPage, /step-state/);
     assert.match(setupPage, /1\. Agent/);
     assert.match(setupPage, /2\. Slack app/);
     assert.match(setupPage, /3\. Tokens/);
@@ -105,6 +124,7 @@ test("Admin API exposes health and sessions", async () => {
     const diagnostics = await fetch(app.adminServer.url("/v1/setup/diagnostics")).then((res) => res.json());
     assert.equal(diagnostics.ok, true);
     assert.ok(Array.isArray(diagnostics.diagnostics.checks));
+    assert.ok(Array.isArray(diagnostics.diagnostics.steps));
     assert.ok(diagnostics.diagnostics.checks.some((item) => item.name === "runtime:installed" && item.pass === true));
     const manifest = await fetch(app.adminServer.url("/v1/setup/slack/manifest")).then((res) => res.json());
     assert.equal(manifest.ok, true);

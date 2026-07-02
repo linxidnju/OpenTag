@@ -120,6 +120,7 @@ const DEFAULT_CONFIG = {
         {
           channelId: "*",
           name: "default",
+          profileName: "Default Access Bundle",
           defaultRuntime: "mock",
           allowedRuntimes: ["mock"],
           allowedUsers: [],
@@ -129,6 +130,11 @@ const DEFAULT_CONFIG = {
           workspaceRoot: null,
           instructions: "",
           memory: {},
+          limits: {
+            maxDailyRuns: null,
+            maxRuntimeMs: 900000,
+            maxArtifactBytes: 5000000
+          },
           policy: {
             requireApprovalForWriteAccess: true,
             allowSelfApproval: true,
@@ -273,6 +279,11 @@ export function resolveChannelConfig(config, { workspaceId, channelId }) {
       workspaceRoot: null,
       instructions: "",
       memory: {},
+      limits: {
+        maxDailyRuns: null,
+        maxRuntimeMs: 900000,
+        maxArtifactBytes: 5000000
+      },
       policy: { requireApprovalForWriteAccess: true, allowSelfApproval: true, requireApprovalPatterns: [], denyPatterns: [] }
     }, channel)
   };

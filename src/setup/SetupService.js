@@ -49,7 +49,9 @@ export class SetupService {
   async diagnostics() {
     const state = await this.state();
     const selectedAgent = state.agents.find((agent) => agent.runtimeId === state.selectedRuntime);
+    const tokenReady = state.slack.hasBotToken && state.slack.hasAppToken && state.slack.hasSigningSecret;
     const checks = [
+      setupCheck("daemon:admin-api", true, "local Admin API is reachable"),
       setupCheck("config:file", Boolean(state.configPath && await pathExists(state.configPath)), state.configPath || "not configured"),
       setupCheck("manifest:file", state.hasManifestFile, state.manifestPath, { required: false }),
       setupCheck("runtime:selected", Boolean(state.selectedRuntime), state.selectedRuntime),
@@ -58,9 +60,17 @@ export class SetupService {
       setupCheck("slack:app-token", state.slack.hasAppToken, state.slack.appTokenEnv || "not configured"),
       setupCheck("slack:signing-secret", state.slack.hasSigningSecret, state.slack.signingSecretEnv || "not configured")
     ];
+    const runtimeReady = Boolean(selectedAgent?.installed && selectedAgent?.configured);
+    const steps = [
+      setupStep("agent", runtimeReady ? "done" : "blocked", runtimeReady ? `Runtime ${state.selectedRuntime} is ready.` : "Choose an installed and configured runtime."),
+      setupStep("slack-app", state.hasManifestFile ? "done" : "ready", state.hasManifestFile ? "Slack manifest file is ready." : "Generate or copy the Slack manifest from this page."),
+      setupStep("tokens", tokenReady ? "done" : "blocked", tokenReady ? "Slack tokens are saved locally." : "Paste the bot token, app token, and signing secret."),
+      setupStep("verify", checks.every((item) => item.pass || !item.required) ? "done" : "blocked", "Run opentag doctor --strict after all required checks are green.")
+    ];
     return {
       ok: checks.every((item) => item.pass || !item.required),
       checks,
+      steps,
       nextActions: diagnosticsNextActions(checks, state)
     };
   }
@@ -123,6 +133,10 @@ function hasRealEnv(envName) {
 
 function setupCheck(name, pass, detail, options = {}) {
   return { name, pass, detail, required: options.required !== false };
+}
+
+function setupStep(id, status, detail) {
+  return { id, status, detail };
 }
 
 function diagnosticsNextActions(checks, state) {

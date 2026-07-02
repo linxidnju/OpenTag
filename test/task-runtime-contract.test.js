@@ -161,3 +161,37 @@ test("engine records task id on audit and run records", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("engine enforces channel daily run limits", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "opentag-run-limit-"));
+  const config = {
+    app: { name: "OpenTag", dataDir: path.join(dir, "data"), logLevel: "silent" },
+    gateway: "console",
+    slack: { mode: "socket", processThreadReplies: true, streamUpdateMs: 1, maxMessageChars: 35000 },
+    sessions: { maxContextMessages: 8, idleTtlHours: 72 },
+    sandbox: { rootDir: path.join(dir, "sandboxes"), mode: "ephemeral", cleanupOnComplete: false, retentionHours: 24 },
+    security: { redactSecrets: true, defaultDenyPatterns: [], defaultApprovalPatterns: [] },
+    workspaces: [{ workspaceId: "*", channels: [{ channelId: "*", name: "default", defaultRuntime: "mock", allowedRuntimes: ["mock"], allowedUsers: [], approvers: [], limits: { maxDailyRuns: 1 }, policy: { requireApprovalForWriteAccess: false, requireApprovalPatterns: [], denyPatterns: [] } }] }],
+    runtimes: { default: "mock", adapters: { mock: { type: "mock", delayMs: 0 } } }
+  };
+  const app = await buildOpenTag(config, { logger: createLogger({ level: "silent" }) });
+  const events = [];
+  const responder = {
+    sendStatus: async (text) => events.push(["status", text]),
+    sendText: async (text) => events.push(["text", text]),
+    appendToken: async (text) => events.push(["token", text]),
+    complete: async (text) => events.push(["complete", text]),
+    fail: async (text) => events.push(["fail", text]),
+    sendApproval: async (approval) => events.push(["approval", approval])
+  };
+
+  try {
+    await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", threadId: "1", messageId: "1", userId: "U1", text: "hello", cleanText: "hello", isMention: true, raw: {} }, responder);
+    await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", threadId: "2", messageId: "2", userId: "U1", text: "hello again", cleanText: "hello again", isMention: true, raw: {} }, responder);
+    assert.ok(events.some((event) => event[0] === "fail" && event[1].includes("daily run limit")));
+    const runs = await app.store.listRuns({});
+    assert.equal(runs.length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
