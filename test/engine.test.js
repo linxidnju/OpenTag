@@ -173,6 +173,22 @@ test("engine gives public runtime only current visible Team Knowledge", async ()
   }
 });
 
+test("engine warns when knowledge persists but audit append fails", async () => {
+  const { app, dir } = await makeApp();
+  try {
+    app.store.appendAudit = async () => {
+      throw new Error("audit disk unavailable");
+    };
+    const response = recorder();
+    await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", channelType: "channel", threadId: "1", messageId: "1", eventId: "E1", userId: "U1", text: "remember: persist this", cleanText: "remember: persist this", isMention: true, raw: {} }, response);
+    const text = response.events.find((event) => event[0] === "text")?.[1] || "";
+    assert.match(text, /audit recording failed/);
+    assert.equal((await app.teamKnowledgeService.listVisible({ workspaceId: "T1", channelId: "C1", channelType: "channel" })).length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("engine approval approve resumes runtime", async () => {
   const { app, dir } = await makeApp();
   try {

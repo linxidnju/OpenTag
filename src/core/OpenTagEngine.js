@@ -214,7 +214,7 @@ export class OpenTagEngine {
     try {
       if (command.name === "remember") {
         const entry = await this.teamKnowledgeService.remember({ ...base, text: command.text, kind: command.kind, createdBy: message.userId, source, operationId });
-        await responder.sendText(`Saved team knowledge ${entry.id} · v${entry.currentVersion} · ${entry.kind} · ${entry.scope} · source=${formatKnowledgeSource(entry.source)}`);
+        await responder.sendText(withKnowledgeWarning(`Saved team knowledge ${entry.id} · v${entry.currentVersion} · ${entry.kind} · ${entry.scope} · source=${formatKnowledgeSource(entry.source)}`, entry));
         return;
       }
       if (command.name === "list") {
@@ -229,18 +229,18 @@ export class OpenTagEngine {
       }
       if (command.name === "correct") {
         const entry = await this.teamKnowledgeService.correct({ ...base, knowledgeId: command.knowledgeId, text: command.text, updatedBy: message.userId, source, operationId });
-        await responder.sendText(entry ? `Updated team knowledge ${entry.id} · v${entry.currentVersion - 1} -> v${entry.currentVersion}` : `Knowledge not found: ${command.knowledgeId}`);
+        await responder.sendText(entry ? withKnowledgeWarning(`Updated team knowledge ${entry.id} · v${entry.currentVersion - 1} -> v${entry.currentVersion}`, entry) : `Knowledge not found: ${command.knowledgeId}`);
         return;
       }
       if (command.name === "archive" || command.name === "restore") {
         const entry = await this.teamKnowledgeService[command.name]({ ...base, knowledgeId: command.knowledgeId, actorId: message.userId, operationId });
         const state = command.name === "archive" ? "archived" : "restored";
-        await responder.sendText(entry ? `Team knowledge ${entry.id} ${state}.` : `Knowledge not found: ${command.knowledgeId}`);
+        await responder.sendText(entry ? withKnowledgeWarning(`Team knowledge ${entry.id} ${state}.`, entry) : `Knowledge not found: ${command.knowledgeId}`);
         return;
       }
       if (command.name === "forget") {
         const entry = await this.teamKnowledgeService.forget({ ...base, knowledgeId: command.knowledgeId, actorId: message.userId, operationId });
-        await responder.sendText(entry ? `Team knowledge ${entry.id} permanently removed.` : `Knowledge not found: ${command.knowledgeId}`);
+        await responder.sendText(entry ? withKnowledgeWarning(`Team knowledge ${entry.id} permanently removed.`, entry) : `Knowledge not found: ${command.knowledgeId}`);
       }
     } catch (error) {
       await responder.fail(error.message);
@@ -714,6 +714,10 @@ function formatKnowledgeListItem(entry) {
 function formatKnowledgeDetails(entry) {
   const history = entry.versions.map((version) => `v${version.version} by ${version.createdBy || "unknown"} @ ${version.createdAt}`).join(", ");
   return `${entry.id} [${entry.kind}, ${entry.scope}, ${entry.status}, v${entry.currentVersion}]\n${entry.content}\nsource=${formatKnowledgeSource(entry.source)}\nhistory=${history}`;
+}
+
+function withKnowledgeWarning(text, entry) {
+  return entry?.auditWarning ? `${text}\nWarning: ${entry.auditWarning}` : text;
 }
 
 function parseOpenTagCommand(text) {

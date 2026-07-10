@@ -49,13 +49,15 @@ export class TeamKnowledgeService {
       recordOperation(partition, operationId, record);
       return { entry: toView(record), replayed: false };
     });
-    if (!outcome.replayed) await this.appendKnowledgeAudit("knowledge.created", outcome.entry, createdBy);
+    if (!outcome.replayed) outcome.entry.auditWarning = await this.appendKnowledgeAudit("knowledge.created", outcome.entry, createdBy);
     return outcome.entry;
   }
 
   async correct({ workspaceId, channelId, channelType, knowledgeId, text, reason = null, updatedBy, source = null, operationId = null }) {
     this.assertEnabled();
     const content = validateContent(text, this.config.maxContentChars);
+    const operationReplay = await this.replayVisibleOperation({ workspaceId, channelId, channelType, operationId });
+    if (operationReplay) return operationReplay;
     let location = await this.findKnowledgeLocation({ workspaceId, channelId, channelType, knowledgeId });
     let legacy = null;
     if (!location) {
@@ -92,7 +94,7 @@ export class TeamKnowledgeService {
       });
     }
     if (!outcome.replayed) {
-      await this.appendKnowledgeAudit("knowledge.corrected", outcome.entry, updatedBy, { previousVersion: outcome.previousVersion, currentVersion: outcome.entry.currentVersion });
+      outcome.entry.auditWarning = await this.appendKnowledgeAudit("knowledge.corrected", outcome.entry, updatedBy, { previousVersion: outcome.previousVersion, currentVersion: outcome.entry.currentVersion });
     }
     return outcome.entry;
   }
@@ -107,6 +109,8 @@ export class TeamKnowledgeService {
 
   async setStatus({ workspaceId, channelId, channelType, knowledgeId, actorId, operationId = null, status, auditType }) {
     this.assertEnabled();
+    const operationReplay = await this.replayVisibleOperation({ workspaceId, channelId, channelType, operationId });
+    if (operationReplay) return operationReplay;
     const location = await this.findKnowledgeLocation({ workspaceId, channelId, channelType, knowledgeId });
     if (!location) return null;
     const outcome = await this.mutatePartition(location.key, async (partition) => {
@@ -120,12 +124,14 @@ export class TeamKnowledgeService {
       recordOperation(partition, operationId, record);
       return { entry: toView(record), replayed: false };
     });
-    if (outcome.entry && !outcome.replayed) await this.appendKnowledgeAudit(auditType, outcome.entry, actorId);
+    if (outcome.entry && !outcome.replayed) outcome.entry.auditWarning = await this.appendKnowledgeAudit(auditType, outcome.entry, actorId);
     return outcome.entry;
   }
 
   async forget({ workspaceId, channelId, channelType, knowledgeId, actorId, operationId = null }) {
     this.assertEnabled();
+    const operationReplay = await this.replayVisibleOperation({ workspaceId, channelId, channelType, operationId });
+    if (operationReplay) return operationReplay;
     const location = await this.findKnowledgeLocation({ workspaceId, channelId, channelType, knowledgeId });
     if (location) {
       const outcome = await this.mutatePartition(location.key, async (partition) => {
@@ -139,7 +145,7 @@ export class TeamKnowledgeService {
         recordOperation(partition, operationId, record, "forgotten");
         return { entry, replayed: false };
       });
-      if (outcome.entry && !outcome.replayed) await this.appendKnowledgeAudit("knowledge.forgotten", outcome.entry, actorId);
+      if (outcome.entry && !outcome.replayed) outcome.entry.auditWarning = await this.appendKnowledgeAudit("knowledge.forgotten", outcome.entry, actorId);
       return outcome.entry;
     }
 
@@ -148,7 +154,7 @@ export class TeamKnowledgeService {
     const deleted = await this.store.deleteMemoryEntry({ workspaceId, channelId, memoryId: knowledgeId });
     if (!deleted) return null;
     const entry = toView(legacyRecord(legacy));
-    await this.appendKnowledgeAudit("knowledge.forgotten", entry, actorId);
+    entry.auditWarning = await this.appendKnowledgeAudit("knowledge.forgotten", entry, actorId);
     return entry;
   }
 
@@ -190,11 +196,19 @@ export class TeamKnowledgeService {
   }
 
   async findKnowledgeLocation({ workspaceId, channelId, channelType, knowledgeId }) {
-    const keys = [{ workspaceId, scope: "workspace", channelId: null }];
-    if (scopeFor(channelType) === "channel" && channelId) keys.push({ workspaceId, scope: "channel", channelId });
-    for (const key of keys) {
+    for (const key of visibleKeys({ workspaceId, channelId, channelType })) {
       const partition = await this.store.getKnowledgePartition(key);
       if (partition.records.some((record) => record.id === knowledgeId)) return { key };
+    }
+    return null;
+  }
+
+  async replayVisibleOperation({ workspaceId, channelId, channelType, operationId }) {
+    if (!operationId) return null;
+    for (const key of visibleKeys({ workspaceId, channelId, channelType })) {
+      const partition = await this.store.getKnowledgePartition(key);
+      const replay = replayOperation(partition, operationId);
+      if (replay) return replay;
     }
     return null;
   }
@@ -256,8 +270,10 @@ export class TeamKnowledgeService {
         currentVersion: entry.currentVersion,
         ...details
       });
+      return null;
     } catch (error) {
       this.logger?.error?.("knowledge.audit_append_failed", { type, knowledgeId: entry.id, error: error.message });
+      return `Knowledge was saved, but audit recording failed: ${error.message}`;
     }
   }
 
@@ -268,6 +284,12 @@ export class TeamKnowledgeService {
 
 function partitionKey({ workspaceId, scope, channelId }) {
   return `${workspaceId}:${scope}:${channelId || "workspace"}`;
+}
+
+function visibleKeys({ workspaceId, channelId, channelType }) {
+  const keys = [{ workspaceId, scope: "workspace", channelId: null }];
+  if (scopeFor(channelType) === "channel" && channelId) keys.push({ workspaceId, scope: "channel", channelId });
+  return keys;
 }
 
 function scopeFor(channelType) {

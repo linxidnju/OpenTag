@@ -152,6 +152,35 @@ test("archive, restore, and forget have distinct behavior", async () => {
   }
 });
 
+test("forget replays the original result without a second audit event", async () => {
+  const { dir, store, service } = await makeKnowledgeService();
+  try {
+    const entry = await service.remember({ workspaceId: "T1", channelId: "C1", channelType: "channel", text: "delete once", createdBy: "U1", operationId: "create:E1" });
+    const first = await service.forget({ workspaceId: "T1", channelId: "C1", channelType: "channel", knowledgeId: entry.id, actorId: "U1", operationId: "delete:E1" });
+    const replay = await service.forget({ workspaceId: "T1", channelId: "C1", channelType: "channel", knowledgeId: entry.id, actorId: "U1", operationId: "delete:E1" });
+    assert.equal(first.id, entry.id);
+    assert.equal(replay.id, entry.id);
+    assert.equal(replay.status, "forgotten");
+    assert.equal((await store.listAudit({ type: "knowledge.forgotten" })).length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("knowledge mutation reports an audit persistence warning without rollback", async () => {
+  const { dir, store, service } = await makeKnowledgeService();
+  try {
+    store.appendAudit = async () => {
+      throw new Error("audit disk unavailable");
+    };
+    const entry = await service.remember({ workspaceId: "T1", channelId: "C1", channelType: "channel", text: "persist knowledge", createdBy: "U1" });
+    assert.match(entry.auditWarning, /audit disk unavailable/);
+    assert.equal((await service.inspect({ workspaceId: "T1", channelId: "C1", channelType: "channel", knowledgeId: entry.id })).content, "persist knowledge");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("legacy memory is visible and materializes after a successful correction", async () => {
   const { dir, store, service } = await makeKnowledgeService();
   try {
