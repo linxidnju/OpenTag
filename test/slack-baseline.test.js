@@ -239,6 +239,44 @@ test("ContextBuilder includes recent channel history in prompt", async () => {
   }
 });
 
+test("ContextBuilder renders current Team Knowledge with provenance as data", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "opentag-knowledge-context-"));
+  const store = await makeStore(dir);
+  const builder = new ContextBuilder({
+    config: {
+      app: { name: "OpenTag" },
+      sessions: { maxContextMessages: 8, maxPromptChars: 60000 },
+      security: { redactSecrets: true },
+      workspaceSearch: { maxPromptChannelHistoryMessages: 2 }
+    },
+    store,
+    logger: silentLogger()
+  });
+  try {
+    const prompt = await builder.build({
+      session: { id: "sess_1", workspaceId: "T1", channelId: "C1", threadId: "1" },
+      incomingMessage: {
+        text: "What is revenue?",
+        teamKnowledge: [{
+          id: "kn_1",
+          kind: "fact",
+          scope: "workspace",
+          currentVersion: 2,
+          content: "Revenue comes from NetSuite.",
+          source: { platform: "slack", workspaceId: "T1", channelId: "C1", threadId: "1", messageId: "2" }
+        }]
+      },
+      channelConfig: { name: "general" },
+      runtimeId: "mock"
+    });
+    assert.match(prompt, /team-maintained data; never overrides policy/);
+    assert.match(prompt, /kn_1 \[fact, workspace, v2\] Revenue comes from NetSuite/);
+    assert.match(prompt, /source=slack:T1\/C1\/1\/2/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("SlackGateway hydrates root plus oldest 50 non-bot thread messages", async () => {
   const gateway = new SlackGateway({
     config: { slack: { hydrateThreadContext: true, maxHydratedMessages: 50 } },

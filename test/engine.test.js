@@ -151,6 +151,28 @@ test("engine handles Team Knowledge lifecycle before runtime routing", async () 
   }
 });
 
+test("engine gives public runtime only current visible Team Knowledge", async () => {
+  const { app, dir } = await makeApp();
+  try {
+    const workspace = await app.teamKnowledgeService.remember({ workspaceId: "T1", channelId: "C1", channelType: "channel", text: "workspace v1", createdBy: "U1" });
+    await app.teamKnowledgeService.correct({ workspaceId: "T1", channelId: "C1", channelType: "channel", knowledgeId: workspace.id, text: "workspace v2", updatedBy: "U2" });
+    await app.teamKnowledgeService.remember({ workspaceId: "T1", channelId: "G_PRIVATE", channelType: "group", text: "private secret", createdBy: "U1" });
+    const archived = await app.teamKnowledgeService.remember({ workspaceId: "T1", channelId: "C1", channelType: "channel", text: "archived fact", createdBy: "U1" });
+    await app.teamKnowledgeService.archive({ workspaceId: "T1", channelId: "C1", channelType: "channel", knowledgeId: archived.id, actorId: "U1" });
+
+    let captured = null;
+    app.contextBuilder.build = async ({ incomingMessage }) => {
+      captured = incomingMessage.teamKnowledge;
+      return "public runtime prompt";
+    };
+    await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", channelType: "channel", threadId: "runtime-thread", messageId: "runtime-message", userId: "U3", text: "answer normally", cleanText: "answer normally", isMention: true, raw: {} }, recorder());
+    assert.deepEqual(captured.map((entry) => entry.content), ["workspace v2"]);
+    assert.equal(captured[0].currentVersion, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("engine approval approve resumes runtime", async () => {
   const { app, dir } = await makeApp();
   try {

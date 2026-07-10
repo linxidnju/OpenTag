@@ -540,7 +540,7 @@ export class OpenTagEngine {
       channelId: message.channelId,
       botUserId: message.botUserId
     });
-    const channelMemory = await this.channelMemoryService?.listForContext({
+    const teamKnowledge = await this.teamKnowledgeService?.listForContext({
       workspaceId: session.workspaceId,
       channelId: session.channelId,
       channelType: message.channelType
@@ -568,7 +568,7 @@ export class OpenTagEngine {
       limit: this.config.workspaceSearch?.slackSearchMaxResults
     }) || [];
     const workspaceSearchHits = [...slackSearchHits, ...localSearchHits].slice(0, Number(this.config.workspaceSearch?.maxHits || 8));
-    return { downloadedFiles, pinnedItems, channelHistoryMessages, channelMemory, workspaceSearchHits };
+    return { downloadedFiles, pinnedItems, channelHistoryMessages, teamKnowledge, workspaceSearchHits };
   }
 
   async readChannelHistory({ client, channelId, botUserId }) {
