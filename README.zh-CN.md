@@ -5,7 +5,7 @@
 <h1 align="center">OpenTag</h1>
 
 <p align="center">
-  <strong>把本地 AI Agent 拉进团队频道的开源协作层。</strong>
+  <strong>开源、频道原生的多人 AI Agent 网关，内置共享且可审计的团队知识。</strong>
 </p>
 
 <p align="center">
@@ -38,6 +38,7 @@ OpenTag 把 AI Agent 带到团队已经在使用的协作场景里：Slack chann
 - 让 Agent 根据 Slack thread 调查 bug。
 - 让团队成员在 Agent 运行前或运行中补充上下文。
 - 把任务路由到不同 Agent 后端，例如 Codex、Claude Code、OpenCode、Docker Agent、HTTP Agent 或自研 CLI。
+- 明确保存团队事实、决定、约定、偏好或流程；纠正会形成版本，并按作用域、来源和审计记录提供给所有已配置 runtime。
 - 用 Channel Profile / Access Bundle 给不同频道配置项目、权限、记忆、默认 Agent 和运行限额。
 - 在写操作或高风险动作前要求人工审批。
 - 保留 session、决策、输出、artifact 和 audit 记录。
@@ -70,6 +71,7 @@ Agent 会回复在同一个 Slack thread 里，工作过程和结果都保留在
 
 - **默认共享**：对话、上下文和结果留在团队 thread 里。
 - **理解频道边界**：每个频道可以有自己的项目、指令、记忆、权限、默认 runtime 和运行限额。
+- **共享团队知识**：纠正一次，后续 thread 使用最新有效版本；来源和修订历史保留在团队自己的环境里。
 - **不绑定单一 Agent**：可以根据任务选择适合的 Agent 后端。
 - **支持审批**：敏感动作可以暂停，等待人工确认。
 - **可审计**：session、message、approval、output 和 artifact 可以后续复盘。
@@ -109,6 +111,7 @@ opentag doctor --strict
 - 本地 console 模式：不用 Slack 也能试用 OpenTag。
 - Runtime 选择：mock、Codex、Claude Code、OpenCode、Docker、HTTP Agent 和 generic CLI。
 - Channel 配置：默认 runtime、可用 runtime、可用用户、审批人、指令、记忆、workspace root。
+- Team Knowledge：版本历史、workspace/私有频道边界、来源、归档/恢复和永久删除。
 - 本地记录：sessions、messages、approvals、runs、audit records 和 artifacts。
 - Admin 与集成能力：方便团队后续构建更深的工作流。
 

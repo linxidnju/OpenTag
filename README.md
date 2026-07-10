@@ -5,7 +5,7 @@
 <h1 align="center">OpenTag</h1>
 
 <p align="center">
-  <strong>Open-source, channel-native agent gateway for teams.</strong>
+  <strong>Open-source, channel-native multiplayer AI gateway with shared, auditable team knowledge.</strong>
 </p>
 
 <p align="center">
@@ -38,6 +38,7 @@ Instead of running an agent from one person's terminal and pasting results back 
 - Ask an agent to investigate a bug from a Slack thread.
 - Let teammates add context before or during the agent run.
 - Route work to different agent backends such as Codex, Claude Code, OpenCode, Docker-based agents, HTTP agents, or custom CLIs.
+- Teach OpenTag an explicit team fact, decision, convention, preference, or procedure; corrections are versioned, scoped, sourced, and reused by every configured runtime.
 - Use Channel Profiles / Access Bundles so different projects can have different permissions, memories, default agents, and run limits.
 - Require approvals before write actions or risky operations.
 - Keep a record of sessions, decisions, outputs, and generated artifacts.
@@ -70,6 +71,7 @@ Most AI coding and automation tools are built around a single local operator. Op
 
 - **Shared by default**: the conversation, context, and result stay in the team thread.
 - **Channel-aware**: each channel can have its own project, instructions, memory, permissions, default runtime, and run limits.
+- **Shared team knowledge**: correct a fact once and future threads receive the latest active version, with provenance and revision history under your control.
 - **Agent-flexible**: use the agent runtime that fits the task instead of locking the team into one backend.
 - **Approval-ready**: sensitive actions can pause for human review.
 - **Auditable**: sessions, messages, approvals, outputs, and artifacts can be reviewed later.
@@ -121,6 +123,7 @@ For detailed Slack setup, start with:
 - Local console mode for trying OpenTag without Slack.
 - Runtime options for mock runs, Codex, Claude Code, OpenCode, Docker, HTTP agents, and generic CLI agents.
 - Channel configuration for default runtime, allowed runtimes, allowed users, approvers, instructions, memory, and workspace roots.
+- Versioned Team Knowledge with workspace/private-channel boundaries, source references, archive/restore, and permanent deletion.
 - Channel Profiles / Access Bundles for per-channel runtime, memory, approval, and limit boundaries.
 - Local storage for sessions, messages, approvals, runs, audit records, and artifacts.
 - Admin and integration surfaces for teams that want to build deeper workflows.

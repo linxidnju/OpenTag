@@ -71,6 +71,24 @@ DM 会创建个人 session。
 
 该 runtime 必须被 channel config 允许。
 
+## 维护共享团队知识
+
+Team Knowledge 允许团队成员明确保存和纠正知识，让后续 thread 和所有已配置 runtime 复用最新有效版本。
+
+| 操作 | English | 中文 |
+|---|---|---|
+| 保存 | `remember decision: ship Friday` | `记住决定：周五发布` |
+| 纠正 | `correct kn_123: ship Monday` | `纠正 kn_123：周一发布` |
+| 列表 | `knowledge` | `查看知识` |
+| 查看详情 | `knowledge kn_123` | `查看知识 kn_123` |
+| 归档 | `archive knowledge kn_123` | `归档 kn_123` |
+| 恢复 | `restore knowledge kn_123` | `恢复 kn_123` |
+| 永久删除 | `forget memory kn_123` | `忘记 kn_123` |
+
+在公开 channel 保存的知识进入 workspace scope。在私有 channel、群组 DM 或 DM 保存的知识只对该私有 channel 可见，同时仍可读取 workspace 知识。纠正会追加新版本，不会覆盖旧历史。
+
+归档是可恢复操作，并会让该知识停止进入 runtime context；忘记会永久删除可读内容。Team Knowledge v1 只响应人类明确发出的命令，不会自动从对话中抽取组织事实。
+
 ## 审批
 
 有些请求在执行前可能需要审批，尤其是选中的 runtime 可以写文件，或请求匹配了高风险模式，例如：
@@ -121,7 +139,7 @@ Cancel session
 - 当前 Slack 消息。
 - 最近的 thread context。
 - Channel instructions。
-- Channel memory。
+- 最新有效版本及其来源明确的共享 Team Knowledge。
 - Runtime contract。
 - 绑定的本地项目路径。
 
