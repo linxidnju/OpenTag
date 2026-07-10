@@ -103,6 +103,8 @@ test("Admin API exposes health and sessions", async () => {
     }).then((res) => res.json());
     assert.equal(updatedMemory.ok, true);
     assert.equal(updatedMemory.entry.text, "Use concise launch updates.");
+    assert.equal(updatedMemory.entry.currentVersion, 2);
+    assert.deepEqual(updatedMemory.entry.versions.map((version) => version.version), [1, 2]);
     const deletedMemory = await fetch(app.adminServer.url(`/v1/memory/${memory.entries[0].id}?workspaceId=T1`), { method: "DELETE" }).then((res) => res.json());
     assert.equal(deletedMemory.ok, true);
     const setupPage = await fetch(app.adminServer.url("/setup")).then((res) => res.text());

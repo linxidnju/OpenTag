@@ -13,8 +13,12 @@ test("ChannelMemoryService saves public channel memory to workspace scope", asyn
   try {
     const entry = await service.remember({ workspaceId: "T1", channelId: "C_PUBLIC", channelType: "channel", text: "public launch fact", createdBy: "U1" });
     assert.equal(entry.scope, "workspace");
+    assert.equal(entry.text, "public launch fact");
+    assert.equal(entry.currentVersion, 1);
     const privateContext = await service.listForContext({ workspaceId: "T1", channelId: "G_PRIVATE", channelType: "group" });
     assert.ok(privateContext.some((item) => item.text === "public launch fact"));
+    assert.equal(await service.forget({ workspaceId: "T1", channelId: "C_PUBLIC", channelType: "channel", memoryId: entry.id, deletedBy: "U1" }), true);
+    assert.equal((await service.listForContext({ workspaceId: "T1", channelId: "C_PUBLIC", channelType: "channel" })).length, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -7,11 +7,12 @@ import { slackManifest } from "../v01/templates/slackManifest.mjs";
 import { buildChannelProfiles } from "../channel/ChannelProfile.js";
 
 export class AdminServer {
-  constructor({ config, engine, store, runtimeRegistry, agentProxy, logger }) {
+  constructor({ config, engine, store, runtimeRegistry, teamKnowledgeService, agentProxy, logger }) {
     this.config = config;
     this.engine = engine;
     this.store = store;
     this.runtimeRegistry = runtimeRegistry;
+    this.teamKnowledgeService = teamKnowledgeService;
     this.agentProxy = agentProxy;
     this.logger = logger;
     this.setupService = new SetupService({ config, runtimeRegistry, logger });
@@ -152,7 +153,13 @@ export class AdminServer {
       const workspaceId = url.searchParams.get("workspaceId") || this.config.workspaces?.[0]?.workspaceId || "*";
       const channelId = url.searchParams.get("channelId") || null;
       const includeChannel = url.searchParams.get("includeChannel") !== "false";
-      const entries = await this.store.listMemoryEntries({ workspaceId, channelId, includeWorkspace: true, includeChannel, limit: numberParam(url, "limit", 100) });
+      const entries = await this.teamKnowledgeService.listVisible({
+        workspaceId,
+        channelId,
+        channelType: includeChannel && channelId ? "private" : "channel",
+        statuses: url.searchParams.get("includeArchived") === "true" ? ["active", "archived"] : ["active"],
+        limit: numberParam(url, "limit", 100)
+      });
       return sendJson(res, 200, { ok: true, entries });
     }
     const memoryMatch = url.pathname.match(/^\/v1\/memory\/([^/]+)$/);
@@ -160,9 +167,18 @@ export class AdminServer {
       const body = await readJson(req);
       if (!body.workspaceId) return sendJson(res, 400, { ok: false, error: "missing workspaceId" });
       if (!body.text || !String(body.text).trim()) return sendJson(res, 400, { ok: false, error: "missing text" });
-      const entry = await this.store.updateMemoryEntry({ workspaceId: body.workspaceId, channelId: body.channelId || null, memoryId: decodeURIComponent(memoryMatch[1]), text: body.text, updatedBy: body.updatedBy || "admin-api" });
+      const entry = await this.teamKnowledgeService.correct({
+        workspaceId: body.workspaceId,
+        channelId: body.channelId || null,
+        channelType: body.channelId ? "private" : "channel",
+        knowledgeId: decodeURIComponent(memoryMatch[1]),
+        text: body.text,
+        reason: body.reason || null,
+        updatedBy: body.updatedBy || "admin-api",
+        source: { platform: "admin" },
+        operationId: body.operationId || null
+      });
       if (!entry) return sendJson(res, 404, { ok: false, error: "memory not found" });
-      await this.store.appendAudit({ type: "memory.updated", workspaceId: body.workspaceId, channelId: body.channelId || null, memoryId: entry.id, updatedBy: body.updatedBy || "admin-api" });
       return sendJson(res, 200, { ok: true, entry });
     }
     if (memoryMatch && method === "DELETE") {
@@ -170,9 +186,15 @@ export class AdminServer {
       if (!workspaceId) return sendJson(res, 400, { ok: false, error: "missing workspaceId" });
       const channelId = url.searchParams.get("channelId") || null;
       const memoryId = decodeURIComponent(memoryMatch[1]);
-      const deleted = await this.store.deleteMemoryEntry({ workspaceId, channelId, memoryId });
-      if (deleted) await this.store.appendAudit({ type: "memory.deleted", workspaceId, channelId, memoryId, deletedBy: "admin-api" });
-      return sendJson(res, deleted ? 200 : 404, { ok: deleted, memoryId, error: deleted ? undefined : "memory not found" });
+      const deleted = await this.teamKnowledgeService.forget({
+        workspaceId,
+        channelId,
+        channelType: channelId ? "private" : "channel",
+        knowledgeId: memoryId,
+        actorId: "admin-api",
+        operationId: url.searchParams.get("operationId") || null
+      });
+      return sendJson(res, deleted ? 200 : 404, { ok: Boolean(deleted), memoryId, error: deleted ? undefined : "memory not found" });
     }
     if (method === "POST" && url.pathname === "/v1/run") {
       const body = await readJson(req);
