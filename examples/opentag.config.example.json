@@ -65,6 +65,13 @@
     "maxPromptChars": 60000,
     "idleTtlHours": 72
   },
+  "teamKnowledge": {
+    "enabled": true,
+    "maxContentChars": 4000,
+    "maxListEntries": 40,
+    "maxContextEntries": 40,
+    "maxContextChars": 12000
+  },
   "sandbox": {
     "rootDir": "./.opentag/sandboxes",
     "workspaceRoot": null,

@@ -120,6 +120,13 @@ export function createLocalConfig({ projectDir, runtime = "codex", appName = "Op
       maxHits: 8,
       slackSearchMaxResults: 10
     },
+    teamKnowledge: {
+      enabled: true,
+      maxContentChars: 4000,
+      maxListEntries: 40,
+      maxContextEntries: 40,
+      maxContextChars: 12000
+    },
     sandbox: {
       rootDir: path.join(root, "sandboxes"),
       workspaceRoot: projectDir,

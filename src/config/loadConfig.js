@@ -75,6 +75,13 @@ const DEFAULT_CONFIG = {
     maxHits: 8,
     slackSearchMaxResults: 10
   },
+  teamKnowledge: {
+    enabled: true,
+    maxContentChars: 4000,
+    maxListEntries: 40,
+    maxContextEntries: 40,
+    maxContextChars: 12000
+  },
   sandbox: {
     rootDir: "./.opentag/sandboxes",
     workspaceRoot: null,
@@ -229,6 +236,13 @@ export function validateConfig(config) {
     assertString(spec.type, `config.runtimes.adapters.${id}.type`);
     if (!["mock", "claude-code", "codex", "opencode", "generic-cli", "http", "docker"].includes(spec.type)) {
       throw new Error(`Unsupported runtime type for ${id}: ${spec.type}`);
+    }
+  }
+  assertObject(config.teamKnowledge, "config.teamKnowledge");
+  for (const key of ["maxContentChars", "maxListEntries", "maxContextEntries", "maxContextChars"]) {
+    const value = Number(config.teamKnowledge[key]);
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new Error(`config.teamKnowledge.${key} must be a positive integer`);
     }
   }
   if (!Array.isArray(config.workspaces) || config.workspaces.length === 0) {
