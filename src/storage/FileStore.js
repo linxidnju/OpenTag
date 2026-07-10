@@ -21,6 +21,7 @@ export class FileStore {
     this.channelReportsDir = path.join(this.rootDir, "channel-reports");
     this.workspaceIndexDir = path.join(this.rootDir, "workspace-index");
     this.memoriesDir = path.join(this.rootDir, "memories");
+    this.knowledgeDir = path.join(this.rootDir, "knowledge");
     this.auditPath = path.join(this.rootDir, "audit.ndjson");
     this.indexPath = path.join(this.sessionsDir, "_thread-index.json");
   }
@@ -38,6 +39,7 @@ export class FileStore {
     await ensureDir(this.channelReportsDir);
     await ensureDir(this.workspaceIndexDir);
     await ensureDir(this.memoriesDir);
+    await ensureDir(this.knowledgeDir);
   }
 
   sessionPath(sessionId) {
@@ -448,6 +450,39 @@ export class FileStore {
       return current.entries[index];
     }
     return null;
+  }
+
+  knowledgePath(workspaceId, scope, channelId = null) {
+    const suffix = scope === "workspace" ? "workspace" : `channel-${channelId || "unknown"}`;
+    return path.join(this.knowledgeDir, `${safeName(workspaceId || "unknown")}--${safeName(suffix)}.json`);
+  }
+
+  async getKnowledgePartition({ workspaceId, scope, channelId = null }) {
+    const resolvedChannelId = scope === "channel" ? channelId : null;
+    return readJsonIfExists(this.knowledgePath(workspaceId, scope, resolvedChannelId), {
+      schemaVersion: "opentag.knowledge.partition.v1",
+      workspaceId,
+      channelId: resolvedChannelId,
+      scope,
+      records: [],
+      operations: {},
+      updatedAt: null
+    });
+  }
+
+  async saveKnowledgePartition({ workspaceId, scope, channelId = null, partition }) {
+    const resolvedChannelId = scope === "channel" ? channelId : null;
+    const record = {
+      schemaVersion: "opentag.knowledge.partition.v1",
+      workspaceId,
+      channelId: resolvedChannelId,
+      scope,
+      records: Array.isArray(partition.records) ? partition.records : [],
+      operations: partition.operations && typeof partition.operations === "object" ? partition.operations : {},
+      updatedAt: nowIso()
+    };
+    await atomicWriteJson(this.knowledgePath(workspaceId, scope, resolvedChannelId), record);
+    return record;
   }
 
   async clear() {
