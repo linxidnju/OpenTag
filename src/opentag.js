@@ -58,6 +58,7 @@ export async function buildOpenTag(config, options = {}) {
     pinnedContextReader,
     workspaceSearchIndexer,
     slackWorkspaceSearcher,
+    teamKnowledgeService,
     channelMemoryService,
     agentProxy,
     artifactUploader,

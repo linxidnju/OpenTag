@@ -6,6 +6,7 @@ import path from "node:path";
 import { loadConfig } from "../src/config/loadConfig.js";
 import { FileStore } from "../src/storage/FileStore.js";
 import { TeamKnowledgeService } from "../src/knowledge/TeamKnowledgeService.js";
+import { parseKnowledgeCommand } from "../src/knowledge/parseKnowledgeCommand.js";
 
 const KNOWLEDGE_CONFIG = {
   enabled: true,
@@ -190,4 +191,18 @@ test("knowledge validates kind and content length", async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("parseKnowledgeCommand supports English and Chinese lifecycle commands", () => {
+  assert.deepEqual(parseKnowledgeCommand("remember decision: ship Friday"), { name: "remember", kind: "decision", text: "ship Friday" });
+  assert.deepEqual(parseKnowledgeCommand("记住约定：报告使用中文"), { name: "remember", kind: "convention", text: "报告使用中文" });
+  assert.deepEqual(parseKnowledgeCommand("correct kn_1: use NetSuite"), { name: "correct", knowledgeId: "kn_1", text: "use NetSuite" });
+  assert.deepEqual(parseKnowledgeCommand("纠正 kn_1：改用 NetSuite"), { name: "correct", knowledgeId: "kn_1", text: "改用 NetSuite" });
+  assert.deepEqual(parseKnowledgeCommand("knowledge kn_1"), { name: "inspect", knowledgeId: "kn_1" });
+  assert.deepEqual(parseKnowledgeCommand("查看知识"), { name: "list" });
+  assert.deepEqual(parseKnowledgeCommand("归档 kn_1"), { name: "archive", knowledgeId: "kn_1" });
+  assert.deepEqual(parseKnowledgeCommand("恢复 kn_1"), { name: "restore", knowledgeId: "kn_1" });
+  assert.deepEqual(parseKnowledgeCommand("forget memory kn_1"), { name: "forget", knowledgeId: "kn_1" });
+  assert.deepEqual(parseKnowledgeCommand("what do you remember?"), { name: "list" });
+  assert.deepEqual(parseKnowledgeCommand("请记住在这个频道：默认用中文"), { name: "remember", kind: "fact", text: "默认用中文" });
 });

@@ -6,9 +6,10 @@ import { isBotOrSystemMessage } from "../gateways/slack/SlackMessageMapper.js";
 import { createTask } from "./Task.js";
 import { normalizeRuntimeEvent } from "./RuntimeEvent.js";
 import { buildPullRequestCandidate } from "../artifacts/PullRequestCandidateBuilder.js";
+import { parseKnowledgeCommand } from "../knowledge/parseKnowledgeCommand.js";
 
 export class OpenTagEngine {
-  constructor({ config, store, sandboxManager, runtimeRegistry, taskRouter, policyEngine, contextBuilder, sessionManager, slackFileManager, pinnedContextReader, workspaceSearchIndexer, slackWorkspaceSearcher, channelMemoryService, agentProxy, artifactUploader, logger }) {
+  constructor({ config, store, sandboxManager, runtimeRegistry, taskRouter, policyEngine, contextBuilder, sessionManager, slackFileManager, pinnedContextReader, workspaceSearchIndexer, slackWorkspaceSearcher, teamKnowledgeService, channelMemoryService, agentProxy, artifactUploader, logger }) {
     this.config = config;
     this.store = store;
     this.sandboxManager = sandboxManager;
@@ -21,6 +22,7 @@ export class OpenTagEngine {
     this.pinnedContextReader = pinnedContextReader;
     this.workspaceSearchIndexer = workspaceSearchIndexer;
     this.slackWorkspaceSearcher = slackWorkspaceSearcher;
+    this.teamKnowledgeService = teamKnowledgeService;
     this.channelMemoryService = channelMemoryService;
     this.agentProxy = agentProxy;
     this.artifactUploader = artifactUploader;
@@ -33,6 +35,11 @@ export class OpenTagEngine {
     const { channel } = resolveChannelConfig(this.config, message);
     const runtimeOverride = parseRuntimeOverride(message.cleanText || message.text || "");
     const cleanText = runtimeOverride.text || message.cleanText || message.text || "";
+
+    const knowledgeCommand = parseKnowledgeCommand(cleanText);
+    if (knowledgeCommand) {
+      return this.handleKnowledgeCommand({ command: knowledgeCommand, message: { ...message, cleanText }, responder });
+    }
 
     let route;
     try {
@@ -189,6 +196,54 @@ export class OpenTagEngine {
         deletedBy: message.userId
       });
       await responder.sendText(deleted ? `已删除 memory：${command.memoryId}` : `没有找到 memory：${command.memoryId}`);
+    }
+  }
+
+  async handleKnowledgeCommand({ command, message, responder }) {
+    if (!this.teamKnowledgeService) {
+      await responder.fail("Team Knowledge is not configured.");
+      return;
+    }
+    const base = {
+      workspaceId: message.workspaceId,
+      channelId: message.channelId,
+      channelType: message.channelType
+    };
+    const source = knowledgeSource(message);
+    const operationId = `${message.platform || "unknown"}:${message.eventId || message.messageId || randomId("op")}`;
+    try {
+      if (command.name === "remember") {
+        const entry = await this.teamKnowledgeService.remember({ ...base, text: command.text, kind: command.kind, createdBy: message.userId, source, operationId });
+        await responder.sendText(`Saved team knowledge ${entry.id} · v${entry.currentVersion} · ${entry.kind} · ${entry.scope} · source=${formatKnowledgeSource(entry.source)}`);
+        return;
+      }
+      if (command.name === "list") {
+        const entries = await this.teamKnowledgeService.listVisible(base);
+        await responder.sendText(entries.length ? entries.map(formatKnowledgeListItem).join("\n") : "No visible team knowledge.");
+        return;
+      }
+      if (command.name === "inspect") {
+        const entry = await this.teamKnowledgeService.inspect({ ...base, knowledgeId: command.knowledgeId });
+        await responder.sendText(entry ? formatKnowledgeDetails(entry) : `Knowledge not found: ${command.knowledgeId}`);
+        return;
+      }
+      if (command.name === "correct") {
+        const entry = await this.teamKnowledgeService.correct({ ...base, knowledgeId: command.knowledgeId, text: command.text, updatedBy: message.userId, source, operationId });
+        await responder.sendText(entry ? `Updated team knowledge ${entry.id} · v${entry.currentVersion - 1} -> v${entry.currentVersion}` : `Knowledge not found: ${command.knowledgeId}`);
+        return;
+      }
+      if (command.name === "archive" || command.name === "restore") {
+        const entry = await this.teamKnowledgeService[command.name]({ ...base, knowledgeId: command.knowledgeId, actorId: message.userId, operationId });
+        const state = command.name === "archive" ? "archived" : "restored";
+        await responder.sendText(entry ? `Team knowledge ${entry.id} ${state}.` : `Knowledge not found: ${command.knowledgeId}`);
+        return;
+      }
+      if (command.name === "forget") {
+        const entry = await this.teamKnowledgeService.forget({ ...base, knowledgeId: command.knowledgeId, actorId: message.userId, operationId });
+        await responder.sendText(entry ? `Team knowledge ${entry.id} permanently removed.` : `Knowledge not found: ${command.knowledgeId}`);
+      }
+    } catch (error) {
+      await responder.fail(error.message);
     }
   }
 
@@ -631,6 +686,34 @@ function parseRuntimeOverride(text) {
   const match = String(text).match(/^\s*\/runtime\s+([A-Za-z0-9_.-]+)\s*([\s\S]*)$/i);
   if (!match) return { runtimeId: null, text };
   return { runtimeId: match[1], text: match[2] || "" };
+}
+
+function knowledgeSource(message) {
+  return {
+    platform: message.platform,
+    workspaceId: message.workspaceId,
+    channelId: message.channelId,
+    threadId: message.threadId,
+    messageId: message.messageId,
+    permalink: message.permalink || null
+  };
+}
+
+function formatKnowledgeSource(source = {}) {
+  if (source.permalink) return source.permalink;
+  if (source.platform === "slack") {
+    return `slack:${[source.workspaceId, source.channelId, source.threadId, source.messageId].filter(Boolean).join("/")}`;
+  }
+  return [source.platform, source.workspaceId, source.channelId, source.threadId, source.messageId].filter(Boolean).join(":") || "unknown";
+}
+
+function formatKnowledgeListItem(entry) {
+  return `- ${entry.id} [${entry.kind}, ${entry.scope}, v${entry.currentVersion}]: ${entry.content}`;
+}
+
+function formatKnowledgeDetails(entry) {
+  const history = entry.versions.map((version) => `v${version.version} by ${version.createdBy || "unknown"} @ ${version.createdAt}`).join(", ");
+  return `${entry.id} [${entry.kind}, ${entry.scope}, ${entry.status}, v${entry.currentVersion}]\n${entry.content}\nsource=${formatKnowledgeSource(entry.source)}\nhistory=${history}`;
 }
 
 function parseOpenTagCommand(text) {

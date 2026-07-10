@@ -90,11 +90,62 @@ test("engine handles remember and memory commands without runtime", async () => 
   try {
     const r = recorder();
     await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", channelType: "channel", threadId: "1", messageId: "1", userId: "U1", text: "remember: launch owner is Jordan", cleanText: "remember: launch owner is Jordan", isMention: true, raw: {} }, r);
-    assert.ok(r.events.some((event) => event[0] === "text" && event[1].includes("workspace memory")));
+    assert.ok(r.events.some((event) => event[0] === "text" && event[1].includes("workspace") && event[1].includes("v1")));
     assert.equal((await app.store.listRuns()).length, 0);
     const r2 = recorder();
     await app.engine.handleIncomingMessage({ platform: "slack", workspaceId: "T1", channelId: "C1", channelType: "channel", threadId: "1", messageId: "2", userId: "U1", text: "memory", cleanText: "memory", isMention: true, raw: {} }, r2);
     assert.ok(r2.events.some((event) => event[0] === "text" && event[1].includes("launch owner is Jordan")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("engine handles Team Knowledge lifecycle before runtime routing", async () => {
+  const { app, dir } = await makeApp();
+  try {
+    app.taskRouter.route = () => {
+      throw new Error("knowledge commands must not route to a runtime");
+    };
+    const message = (text, messageId, userId = "U1") => ({
+      platform: "slack",
+      workspaceId: "T1",
+      channelId: "C1",
+      channelType: "channel",
+      threadId: "thread-1",
+      messageId,
+      eventId: `event-${messageId}`,
+      userId,
+      text,
+      cleanText: text,
+      isMention: true,
+      raw: {}
+    });
+
+    const created = recorder();
+    await app.engine.handleIncomingMessage(message("remember decision: launch owner is Jordan", "1"), created);
+    const createdText = created.events.find((event) => event[0] === "text")?.[1] || "";
+    const knowledgeId = createdText.match(/kn_[A-Za-z0-9_.-]+/)?.[0];
+    assert.ok(knowledgeId);
+    assert.match(createdText, /v1/);
+    assert.match(createdText, /decision/);
+    assert.match(createdText, /workspace/);
+
+    const corrected = recorder();
+    await app.engine.handleIncomingMessage(message(`correct ${knowledgeId}: launch owner is Maya`, "2", "U2"), corrected);
+    assert.match(corrected.events.find((event) => event[0] === "text")?.[1] || "", /v1 -> v2/);
+
+    const inspected = recorder();
+    await app.engine.handleIncomingMessage(message(`knowledge ${knowledgeId}`, "3", "U3"), inspected);
+    const inspectedText = inspected.events.find((event) => event[0] === "text")?.[1] || "";
+    assert.match(inspectedText, /launch owner is Maya/);
+    assert.match(inspectedText, /source=slack:T1\/C1\/thread-1\/2/);
+
+    for (const [text, expected] of [[`archive knowledge ${knowledgeId}`, /archived/], [`restore knowledge ${knowledgeId}`, /restored/], [`forget memory ${knowledgeId}`, /permanently removed/]]) {
+      const response = recorder();
+      await app.engine.handleIncomingMessage(message(text, `lifecycle-${text.split(" ")[0]}`), response);
+      assert.match(response.events.find((event) => event[0] === "text")?.[1] || "", expected);
+    }
+    assert.equal((await app.store.listRuns()).length, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

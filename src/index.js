@@ -19,6 +19,8 @@ export { OpenCodeAdapter } from "./runtimes/OpenCodeAdapter.js";
 export { HttpRuntimeAdapter } from "./runtimes/HttpRuntimeAdapter.js";
 export { DockerRuntimeAdapter } from "./runtimes/DockerRuntimeAdapter.js";
 export { buildPullRequestCandidate } from "./artifacts/PullRequestCandidateBuilder.js";
+export { TeamKnowledgeService, KNOWLEDGE_SCHEMA_VERSION } from "./knowledge/TeamKnowledgeService.js";
+export { parseKnowledgeCommand } from "./knowledge/parseKnowledgeCommand.js";
 export { SlackGateway } from "./gateways/slack/SlackGateway.js";
 export { ConsoleGateway } from "./gateways/console/ConsoleGateway.js";
 export { AdminServer } from "./admin/AdminServer.js";
